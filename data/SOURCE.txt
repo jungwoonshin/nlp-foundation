@@ -10,7 +10,7 @@ Mahoney used as the public stand-in for experiments:
   https://github.com/tmikolov/word2vec/blob/master/demo-word.sh
 
 text8 is the first 100MB of processed English Wikipedia (17,005,207 words).
-text8_1m.txt is the first 1,000,000 words of that file (~5.9MB, 52,754 types),
+text8m1.txt is the first 1,000,000 words of that file (~5.9MB, 52,754 types),
 kept small enough to store in git.
 
 The zip and full text8 live in data/raw/ (gitignored). To restore them:
