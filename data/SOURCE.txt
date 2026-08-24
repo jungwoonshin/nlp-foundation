@@ -1,0 +1,19 @@
+Dataset: text8 (first 1,000,000 words)
+
+The original word2vec papers trained on Google News (about 6B–100B tokens),
+which is not publicly available. The official word2vec toolkit instead ships
+a demo that downloads text8, a small cleaned Wikipedia corpus from Matt
+Mahoney used as the public stand-in for experiments:
+
+  http://mattmahoney.net/dc/text8.zip
+  http://mattmahoney.net/dc/textdata.html
+  https://github.com/tmikolov/word2vec/blob/master/demo-word.sh
+
+text8 is the first 100MB of processed English Wikipedia (17,005,207 words).
+text8_1m.txt is the first 1,000,000 words of that file (~5.9MB, 52,754 types),
+kept small enough to store in git.
+
+The zip and full text8 live in data/raw/ (gitignored). To restore them:
+
+  curl -L -o data/raw/text8.zip http://mattmahoney.net/dc/text8.zip
+  tar -xf data/raw/text8.zip -C data/raw
