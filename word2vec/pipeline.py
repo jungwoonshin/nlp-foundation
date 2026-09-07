@@ -24,13 +24,24 @@ class ProcessedCorpus:
     raw_token_count: int
     kept_token_count: int
 
-    def dataloader(self, batch_size: int, shuffle: bool = True, num_workers: int = 0) -> DataLoader:
+    def dataloader(
+        self,
+        batch_size: int,
+        shuffle: bool = True,
+        num_workers: int = 0,
+        with_negatives: bool = True,
+    ) -> DataLoader:
+        collate_fn = (
+            make_negative_collate(self.negative_sampler, self.config.num_negatives)
+            if with_negatives
+            else None
+        )
         return DataLoader(
             self.dataset,
             batch_size=batch_size,
             shuffle=shuffle,
             num_workers=num_workers,
-            collate_fn=make_negative_collate(self.negative_sampler, self.config.num_negatives),
+            collate_fn=collate_fn,
         )
 
 
@@ -41,7 +52,7 @@ def process_corpus(path: str | Path, config: ProcessingConfig | None = None) -> 
     rng = np.random.default_rng(config.seed)
 
     tokens = WhitespaceCorpus(corpus_path).tokens()
-    vocab = Vocab.build(tokens, min_count=config.min_count)
+    vocab = Vocab.build(tokens, min_count=config.min_count, huffman=config.build_huffman)
     encoded = vocab.encode(tokens)
     subsampled = FrequentWordSubsampler(vocab, config.subsample_threshold, rng).apply(encoded)
     centers, contexts = SkipGramPairBuilder(config.window_size, rng).build(subsampled)
