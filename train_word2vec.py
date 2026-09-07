@@ -1,0 +1,129 @@
+"""Build skip-gram pairs and train word2vec (hierarchical softmax or NEG).
+
+`process()` loads the corpus and returns (center, context) ids.
+`hierarchical_softmax()` trains Huffman-path BCE; `negative_sampling()` trains
+noise-contrastive BCE (one positive context plus K negatives per center).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from pathlib import Path
+
+import torch
+from torch import nn
+
+from word2vec.config import ProcessingConfig
+from word2vec.hierarchical_softmax import HierarchicalSoftmax
+from word2vec.negative_sampling import NegativeSampling
+from word2vec.pipeline import ProcessedCorpus, process_corpus
+
+ROOT = Path(__file__).resolve().parent
+DEFAULT_CORPUS = ROOT / "data" / "text8m1.txt"
+EMBEDDING_DIM = 24
+BATCH_SIZE = 256
+LEARNING_RATE = 0.025
+EPOCHS = 200
+
+
+def process(
+    path: str | Path = DEFAULT_CORPUS,
+    *,
+    min_count: int = 5,
+    window_size: int = 5,
+    subsample_threshold: float = 1e-3,
+    num_negatives: int = 5,
+    seed: int = 42,
+    build_huffman: bool = False,
+) -> ProcessedCorpus:
+    """Load `path` and return a PyTorch Dataset of skip-gram pairs."""
+
+    config = ProcessingConfig(
+        min_count=min_count,
+        window_size=window_size,
+        subsample_threshold=subsample_threshold,
+        num_negatives=num_negatives,
+        seed=seed,
+        build_huffman=build_huffman,
+    )
+    return process_corpus(path, config)
+
+
+def _device() -> torch.device:
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"device: {device}")
+    return device
+
+
+def _log_corpus(processed: ProcessedCorpus) -> None:
+    print(f"corpus: {DEFAULT_CORPUS}")
+    print(f"raw tokens: {processed.raw_token_count:,}")
+    print(f"tokens after min_count + subsample: {processed.kept_token_count:,}")
+    print(f"vocab size: {len(processed.vocab):,}")
+    print(f"skip-gram pairs: {len(processed.dataset):,}")
+
+
+def _fit(
+    model: nn.Module,
+    loader: torch.utils.data.DataLoader,
+    device: torch.device,
+    batch_loss: Callable[[nn.Module, dict[str, torch.Tensor], torch.device], torch.Tensor],
+) -> None:
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    model.train()
+    for epoch in range(1, EPOCHS + 1):
+        epoch_loss = 0.0
+        epoch_pairs = 0
+        for batch in loader:
+            loss = batch_loss(model, batch, device)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            batch_pairs = int(batch["center"].shape[0])
+            epoch_loss += float(loss) * batch_pairs
+            epoch_pairs += batch_pairs
+        print(f"epoch {epoch:3d}  loss={epoch_loss / max(epoch_pairs, 1):.4f}")
+
+
+def _hs_loss(model: nn.Module, batch: dict[str, torch.Tensor], device: torch.device) -> torch.Tensor:
+    center = batch["center"].to(device)
+    context = batch["context"].to(device)
+    return model(center, context)
+
+
+def _neg_loss(model: nn.Module, batch: dict[str, torch.Tensor], device: torch.device) -> torch.Tensor:
+    center = batch["center"].to(device)
+    context = batch["context"].to(device)
+    negatives = batch["negatives"].to(device)
+    return model(center, context, negatives)
+
+
+def hierarchical_softmax() -> None:
+    processed = process(build_huffman=True)
+    if processed.vocab.coding is None:
+        raise RuntimeError("Huffman codes are required for hierarchical softmax.")
+    _log_corpus(processed)
+    device = _device()
+    model = HierarchicalSoftmax(
+        processed.vocab.coding,
+        embedding_dim=EMBEDDING_DIM,
+        vocab_size=len(processed.vocab),
+    ).to(device)
+    loader = processed.dataloader(batch_size=BATCH_SIZE, shuffle=True, with_negatives=False)
+    _fit(model, loader, device, _hs_loss)
+
+
+def negative_sampling() -> None:
+    processed = process(build_huffman=False)
+    _log_corpus(processed)
+    device = _device()
+    model = NegativeSampling(
+        embedding_dim=EMBEDDING_DIM,
+        vocab_size=len(processed.vocab),
+    ).to(device)
+    loader = processed.dataloader(batch_size=BATCH_SIZE, shuffle=True, with_negatives=True)
+    _fit(model, loader, device, _neg_loss)
+
+
+if __name__ == "__main__":
+    negative_sampling()
