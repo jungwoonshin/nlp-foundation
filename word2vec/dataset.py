@@ -38,7 +38,7 @@ def make_negative_collate(
         negatives = sampler.sample(
             batch_size=len(batch),
             num_negatives=num_negatives,
-            exclude=contexts.numpy(),
+            exclude=np.stack([contexts.numpy(), centers.numpy()], axis=1),
         )
         return {
             "center": centers,
