@@ -5,6 +5,23 @@ import numpy as np
 from word2vec.vocab import Vocab
 
 
+
+'''
+Word subsampling is a technique used to reduce the frequency of frequent words in a corpus.
+This is done to balance the frequency of words in the corpus and to improve the performance of the word2vec model.
+The technique is based on the observation that frequent words are more likely to be stop words or very common words in the language.
+'''
+
+'''
+The paper and official implementation use different formulas for the keep probability.
+The paper uses:
+P(keep w) = min(1, sqrt(t / f(w)) + t / f(w))
+where f(w) is the corpus frequency of w.
+The official implementation uses:
+P(keep w) = min(1, (sqrt(t / f(w)) + t) / f(w))
+where f(w) is the corpus frequency of w.
+'''
+
 class FrequentWordSubsampler:
     """Drop frequent tokens with the Mikolov et al. (2013) keep probability.
 
