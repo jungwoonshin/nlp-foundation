@@ -1,6 +1,6 @@
 # nlp-foundation
 
-Word2vec from scratch.
+Word2vec from scratch (skip-gram with hierarchical softmax or negative sampling).
 
 ## Data
 
@@ -9,5 +9,20 @@ Wikipedia corpus used by the official word2vec demo (`demo-word.sh`). The
 papers trained on Google News, which is not public; text8 is the small
 public dataset the authors distributed for experiments.
 
-See `data/SOURCE.txt` for download details. Run `python processor.py` to
-build a PyTorch skip-gram dataset (data processing only).
+See `data/SOURCE.txt` for download details.
+
+## Train
+
+```bash
+python train_word2vec.py
+```
+
+That runs negative sampling. For Huffman hierarchical softmax, call
+`hierarchical_softmax()` in that file (it builds Huffman codes and does
+not allocate the NEG noise table).
+
+## Tests
+
+```bash
+python -m unittest discover -s tests
+```
