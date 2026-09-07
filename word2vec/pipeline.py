@@ -19,10 +19,10 @@ from word2vec.vocab import Vocab
 class ProcessedCorpus:
     vocab: Vocab
     dataset: SkipGramDataset
-    negative_sampler: NegativeSampler
     config: ProcessingConfig
     raw_token_count: int
     kept_token_count: int
+    negative_sampler: NegativeSampler | None = None
 
     def dataloader(
         self,
@@ -31,11 +31,14 @@ class ProcessedCorpus:
         num_workers: int = 0,
         with_negatives: bool = True,
     ) -> DataLoader:
-        collate_fn = (
-            make_negative_collate(self.negative_sampler, self.config.num_negatives)
-            if with_negatives
-            else None
-        )
+        collate_fn = None
+        if with_negatives:
+            if self.negative_sampler is None:
+                raise RuntimeError(
+                    "Negative sampling collate requested, but no noise table was built. "
+                    "Call process(build_negative_sampler=True)."
+                )
+            collate_fn = make_negative_collate(self.negative_sampler, self.config.num_negatives)
         return DataLoader(
             self.dataset,
             batch_size=batch_size,
@@ -56,18 +59,20 @@ def process_corpus(path: str | Path, config: ProcessingConfig | None = None) -> 
     encoded = vocab.encode(tokens)
     subsampled = FrequentWordSubsampler(vocab, config.subsample_threshold, rng).apply(encoded)
     centers, contexts = SkipGramPairBuilder(config.window_size, rng).build(subsampled)
-    negatives = NegativeSampler(
-        vocab,
-        power=config.unigram_power,
-        table_size=config.negative_table_size,
-        rng=rng,
-    )
+    negatives = None
+    if config.build_negative_sampler:
+        negatives = NegativeSampler(
+            vocab,
+            power=config.unigram_power,
+            table_size=config.negative_table_size,
+            rng=rng,
+        )
 
     return ProcessedCorpus(
         vocab=vocab,
         dataset=SkipGramDataset(centers, contexts),
-        negative_sampler=negatives,
         config=config,
         raw_token_count=len(tokens),
         kept_token_count=len(subsampled),
+        negative_sampler=negatives,
     )

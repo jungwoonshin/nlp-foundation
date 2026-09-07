@@ -35,6 +35,7 @@ def process(
     num_negatives: int = 5,
     seed: int = 42,
     build_huffman: bool = False,
+    build_negative_sampler: bool = False,
 ) -> ProcessedCorpus:
     """Load `path` and return a PyTorch Dataset of skip-gram pairs."""
 
@@ -45,6 +46,7 @@ def process(
         num_negatives=num_negatives,
         seed=seed,
         build_huffman=build_huffman,
+        build_negative_sampler=build_negative_sampler,
     )
     return process_corpus(path, config)
 
@@ -99,7 +101,7 @@ def _neg_loss(model: nn.Module, batch: dict[str, torch.Tensor], device: torch.de
 
 
 def hierarchical_softmax() -> None:
-    processed = process(build_huffman=True)
+    processed = process(build_huffman=True, build_negative_sampler=False)
     if processed.vocab.coding is None:
         raise RuntimeError("Huffman codes are required for hierarchical softmax.")
     _log_corpus(processed)
@@ -114,7 +116,7 @@ def hierarchical_softmax() -> None:
 
 
 def negative_sampling() -> None:
-    processed = process(build_huffman=False)
+    processed = process(build_huffman=False, build_negative_sampler=True)
     _log_corpus(processed)
     device = _device()
     model = NegativeSampling(

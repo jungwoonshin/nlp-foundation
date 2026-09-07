@@ -14,6 +14,7 @@ class ProcessingConfig:
     negative_table_size: int = 1_000_000
     seed: int = 42
     build_huffman: bool = False
+    build_negative_sampler: bool = False
 
     def validate(self) -> None:
         if self.min_count < 1:
