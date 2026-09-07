@@ -3,15 +3,18 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 
+from word2vec.hierarchical_softmax import HuffmanCoding
+
 
 @dataclass(frozen=True)
 class Vocab:
     word_to_id: dict[str, int]
     id_to_word: tuple[str, ...]
     counts: tuple[int, ...]
+    coding: HuffmanCoding | None = None
 
     @classmethod
-    def build(cls, tokens: list[str], min_count: int) -> Vocab:
+    def build(cls, tokens: list[str], min_count: int, *, huffman: bool = False) -> Vocab:
         frequencies = Counter(tokens)
         kept = sorted(
             ((word, count) for word, count in frequencies.items() if count >= min_count),
@@ -24,7 +27,8 @@ class Vocab:
         word_to_id = {word: index for index, (word, _) in enumerate(kept)}
         id_to_word = tuple(word for word, _ in kept)
         counts = tuple(count for _, count in kept)
-        return cls(word_to_id=word_to_id, id_to_word=id_to_word, counts=counts)
+        coding = HuffmanCoding.from_counts(counts) if huffman else None
+        return cls(word_to_id=word_to_id, id_to_word=id_to_word, counts=counts, coding=coding)
 
     def __len__(self) -> int:
         return len(self.id_to_word)
