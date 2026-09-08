@@ -15,10 +15,24 @@ from word2vec.subsample import FrequentWordSubsampler
 from word2vec.vocab import Vocab
 
 
+def _chunk(ids: list[int], max_length: int) -> list[list[int]]:
+    return [ids[index : index + max_length] for index in range(0, len(ids), max_length)]
+
+
+def _concat_windows(
+    parts: list[tuple[np.ndarray, np.ndarray]],
+) -> tuple[np.ndarray, np.ndarray]:
+    if not parts:
+        raise ValueError("No windows left after sentence cuts and subsampling.")
+    centers = np.concatenate([part[0] for part in parts])
+    contexts = np.concatenate([part[1] for part in parts], axis=0)
+    return centers, contexts
+
+
 @dataclass
 class ProcessedCorpus:
     vocab: Vocab
-    token_ids: list[int]
+    sentences: list[list[int]]
     subsampler: FrequentWordSubsampler
     config: ProcessingConfig
     raw_token_count: int
@@ -27,15 +41,24 @@ class ProcessedCorpus:
     dataset: SkipGramDataset | None = None
 
     def rebuild_examples(self, epoch: int) -> SkipGramDataset:
-        """Subsample the encoded stream, then build skip-gram or CBOW windows."""
+        """Subsample each sentence, cut at max_sentence_length, then build windows."""
         rng = np.random.default_rng(self.config.seed + 1_000_003 * epoch)
-        kept = self.subsampler.apply(self.token_ids, rng)
-        self.kept_token_count = len(kept)
         builder = SkipGramPairBuilder(self.config.window_size, rng)
-        if self.config.architecture == "cbow":
-            centers, contexts = builder.build_cbow(kept)
-        else:
-            centers, contexts = builder.build(kept)
+        parts: list[tuple[np.ndarray, np.ndarray]] = []
+        kept_total = 0
+        max_length = self.config.max_sentence_length
+        for sentence in self.sentences:
+            kept = self.subsampler.apply(sentence, rng)
+            kept_total += len(kept)
+            for buffer in _chunk(kept, max_length):
+                if len(buffer) < 2:
+                    continue
+                if self.config.architecture == "cbow":
+                    parts.append(builder.build_cbow(buffer))
+                else:
+                    parts.append(builder.build(buffer))
+        self.kept_token_count = kept_total
+        centers, contexts = _concat_windows(parts)
         self.dataset = SkipGramDataset(centers, contexts)
         return self.dataset
 
@@ -71,9 +94,13 @@ def process_corpus(path: str | Path, config: ProcessingConfig | None = None) -> 
     corpus_path = resolve_corpus_path(path)
     rng = np.random.default_rng(config.seed)
 
-    tokens = WhitespaceCorpus(corpus_path).tokens()
-    vocab = Vocab.build(tokens, min_count=config.min_count, huffman=config.build_huffman)
-    encoded = vocab.encode(tokens)
+    raw_sentences = WhitespaceCorpus(corpus_path).sentences()
+    vocab = Vocab.build(
+        [token for sentence in raw_sentences for token in sentence],
+        min_count=config.min_count,
+        huffman=config.build_huffman,
+    )
+    sentences = [ids for sentence in raw_sentences if (ids := vocab.encode(sentence))]
     negatives = None
     if config.build_negative_sampler:
         negatives = NegativeSampler(
@@ -85,9 +112,9 @@ def process_corpus(path: str | Path, config: ProcessingConfig | None = None) -> 
 
     return ProcessedCorpus(
         vocab=vocab,
-        token_ids=encoded,
+        sentences=sentences,
         subsampler=FrequentWordSubsampler(vocab, config.subsample_threshold),
         config=config,
-        raw_token_count=len(tokens),
+        raw_token_count=sum(len(sentence) for sentence in raw_sentences),
         negative_sampler=negatives,
     )
