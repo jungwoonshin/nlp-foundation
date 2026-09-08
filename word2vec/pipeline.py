@@ -18,19 +18,36 @@ from word2vec.vocab import Vocab
 @dataclass
 class ProcessedCorpus:
     vocab: Vocab
-    dataset: SkipGramDataset
+    token_ids: list[int]
+    subsampler: FrequentWordSubsampler
     config: ProcessingConfig
     raw_token_count: int
-    kept_token_count: int
     negative_sampler: NegativeSampler | None = None
+    kept_token_count: int = 0
+    dataset: SkipGramDataset | None = None
+
+    def rebuild_examples(self, epoch: int) -> SkipGramDataset:
+        """Subsample the encoded stream, then build skip-gram or CBOW windows."""
+        rng = np.random.default_rng(self.config.seed + 1_000_003 * epoch)
+        kept = self.subsampler.apply(self.token_ids, rng)
+        self.kept_token_count = len(kept)
+        builder = SkipGramPairBuilder(self.config.window_size, rng)
+        if self.config.architecture == "cbow":
+            centers, contexts = builder.build_cbow(kept)
+        else:
+            centers, contexts = builder.build(kept)
+        self.dataset = SkipGramDataset(centers, contexts)
+        return self.dataset
 
     def dataloader(
         self,
         batch_size: int,
+        epoch: int,
         shuffle: bool = True,
         num_workers: int = 0,
         with_negatives: bool = True,
     ) -> DataLoader:
+        dataset = self.rebuild_examples(epoch)
         collate_fn = None
         if with_negatives:
             if self.negative_sampler is None:
@@ -40,7 +57,7 @@ class ProcessedCorpus:
                 )
             collate_fn = make_negative_collate(self.negative_sampler, self.config.num_negatives)
         return DataLoader(
-            self.dataset,
+            dataset,
             batch_size=batch_size,
             shuffle=shuffle,
             num_workers=num_workers,
@@ -57,12 +74,6 @@ def process_corpus(path: str | Path, config: ProcessingConfig | None = None) -> 
     tokens = WhitespaceCorpus(corpus_path).tokens()
     vocab = Vocab.build(tokens, min_count=config.min_count, huffman=config.build_huffman)
     encoded = vocab.encode(tokens)
-    subsampled = FrequentWordSubsampler(vocab, config.subsample_threshold, rng).apply(encoded)
-    builder = SkipGramPairBuilder(config.window_size, rng)
-    if config.architecture == "cbow":
-        centers, contexts = builder.build_cbow(subsampled)
-    else:
-        centers, contexts = builder.build(subsampled)
     negatives = None
     if config.build_negative_sampler:
         negatives = NegativeSampler(
@@ -74,9 +85,9 @@ def process_corpus(path: str | Path, config: ProcessingConfig | None = None) -> 
 
     return ProcessedCorpus(
         vocab=vocab,
-        dataset=SkipGramDataset(centers, contexts),
+        token_ids=encoded,
+        subsampler=FrequentWordSubsampler(vocab, config.subsample_threshold),
         config=config,
         raw_token_count=len(tokens),
-        kept_token_count=len(subsampled),
         negative_sampler=negatives,
     )
