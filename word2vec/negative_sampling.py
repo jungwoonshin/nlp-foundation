@@ -5,6 +5,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from word2vec.embed import lookup_mean
 from word2vec.vocab import Vocab
 
 
@@ -63,13 +64,13 @@ class NegativeSampling(nn.Module):
         target_index: torch.Tensor,
         negative_indices: torch.Tensor,
     ) -> torch.Tensor:
-        """Return mean binary cross entropy for skip-gram pairs given as word ids."""
-        center_vectors = self.center_embeddings(center_index)
+        """Return mean BCE. `center_index` is skip-gram input or a CBOW context bag."""
+        input_vectors = lookup_mean(self.center_embeddings, center_index)
         context_vectors = self.context_embedding(target_index)
         negative_vectors = self.context_embedding(negative_indices)
 
-        positive_logits = (context_vectors * center_vectors).sum(dim=-1)
-        negative_logits = (negative_vectors * center_vectors.unsqueeze(1)).sum(dim=-1)
+        positive_logits = (context_vectors * input_vectors).sum(dim=-1)
+        negative_logits = (negative_vectors * input_vectors.unsqueeze(1)).sum(dim=-1)
 
         pos_bce = F.binary_cross_entropy_with_logits(
             positive_logits, torch.ones_like(positive_logits), reduction="none"

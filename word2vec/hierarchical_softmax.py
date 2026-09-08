@@ -15,6 +15,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from word2vec.embed import lookup_mean
+
 
 @dataclass(frozen=True)
 class _HuffmanNode:
@@ -117,8 +119,9 @@ class HuffmanCoding:
 class HierarchicalSoftmax(nn.Module):
     """Output-side hierarchical softmax trained with binary cross entropy.
 
-    `forward(center_index, target_index)` looks up center word vectors, then
-    treats each Huffman bit as a Bernoulli label (left = 0, right = 1).
+    `forward(input_ids, target_index)` looks up skip-gram or CBOW input
+    vectors, then treats each Huffman bit as a Bernoulli label (left = 0,
+    right = 1).
     """
 
     def __init__(self, coding: HuffmanCoding, embedding_dim: int, vocab_size: int) -> None:
@@ -133,23 +136,16 @@ class HierarchicalSoftmax(nn.Module):
         self.register_buffer("path_mask", coding.path_mask)
 
     def forward(self, center_index: torch.Tensor, target_index: torch.Tensor) -> torch.Tensor:
-        """Return mean path BCE for skip-gram pairs given as word ids.
+        """Return mean path BCE. `center_index` is a skip-gram id or CBOW bag."""
+        if target_index.ndim != 1 or target_index.shape[0] != center_index.shape[0]:
+            raise ValueError("target_index must be 1-D with one id per input row")
 
-        `center_index` and `target_index` are 1-D LongTensors of shape (batch,).
-        Each target word's Huffman bits are labels; logits are dots between the
-        center embedding and the inner-node output embeddings on that path.
-        """
-        if center_index.ndim != 1 or target_index.ndim != 1:
-            raise ValueError("center_index and target_index must be 1-D word-id tensors")
-        if center_index.shape[0] != target_index.shape[0]:
-            raise ValueError("center_index and target_index must have the same length")
-
-        center_vectors = self.center_embeddings(center_index)
+        input_vectors = lookup_mean(self.center_embeddings, center_index)
         nodes = self.path_nodes[target_index]
         codes = self.path_codes[target_index]
         mask = self.path_mask[target_index]
         node_vectors = self.node_embeddings(nodes.clamp(min=0))
-        logits = (node_vectors * center_vectors.unsqueeze(1)).sum(dim=-1)
+        logits = (node_vectors * input_vectors.unsqueeze(1)).sum(dim=-1)
         per_node = F.binary_cross_entropy_with_logits(logits, codes, reduction="none")
         per_example = (per_node * mask.float()).sum(dim=1)
         return per_example.mean()
