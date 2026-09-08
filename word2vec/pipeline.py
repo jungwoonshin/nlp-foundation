@@ -58,7 +58,11 @@ def process_corpus(path: str | Path, config: ProcessingConfig | None = None) -> 
     vocab = Vocab.build(tokens, min_count=config.min_count, huffman=config.build_huffman)
     encoded = vocab.encode(tokens)
     subsampled = FrequentWordSubsampler(vocab, config.subsample_threshold, rng).apply(encoded)
-    centers, contexts = SkipGramPairBuilder(config.window_size, rng).build(subsampled)
+    builder = SkipGramPairBuilder(config.window_size, rng)
+    if config.architecture == "cbow":
+        centers, contexts = builder.build_cbow(subsampled)
+    else:
+        centers, contexts = builder.build(subsampled)
     negatives = None
     if config.build_negative_sampler:
         negatives = NegativeSampler(

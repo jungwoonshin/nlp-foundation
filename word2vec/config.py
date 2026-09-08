@@ -15,6 +15,7 @@ class ProcessingConfig:
     seed: int = 42
     build_huffman: bool = False
     build_negative_sampler: bool = False
+    architecture: str = "skipgram"
 
     def validate(self) -> None:
         if self.min_count < 1:
@@ -29,6 +30,8 @@ class ProcessingConfig:
             raise ValueError("unigram_power must be > 0")
         if self.negative_table_size < 1:
             raise ValueError("negative_table_size must be >= 1")
+        if self.architecture not in {"skipgram", "cbow"}:
+            raise ValueError("architecture must be 'skipgram' or 'cbow'")
 
 
 def resolve_corpus_path(path: str | Path) -> Path:
