@@ -166,7 +166,7 @@ class PerEpochSubsampleTests(unittest.TestCase):
         ids = vocab.encode(tokens)
         corpus = ProcessedCorpus(
             vocab=vocab,
-            token_ids=ids,
+            sentences=[ids],
             subsampler=FrequentWordSubsampler(vocab, 1e-3),
             config=ProcessingConfig(seed=0, window_size=2, architecture="skipgram"),
             raw_token_count=len(tokens),
@@ -185,6 +185,59 @@ class PerEpochSubsampleTests(unittest.TestCase):
             corpus.subsampler.apply(ids, np.random.default_rng(11)),
             corpus.subsampler.apply(ids, np.random.default_rng(12)),
         )
+
+
+class SentenceBufferTests(unittest.TestCase):
+    def test_windows_do_not_cross_max_sentence_length(self) -> None:
+        tokens = ["aa", "bb", "cc", "dd", "ee"]
+        vocab = Vocab.build(tokens, min_count=1, huffman=False)
+        ids = vocab.encode(tokens)
+        corpus = ProcessedCorpus(
+            vocab=vocab,
+            sentences=[ids],
+            subsampler=FrequentWordSubsampler(vocab, 1.0),
+            config=ProcessingConfig(
+                seed=0,
+                window_size=1,
+                architecture="skipgram",
+                max_sentence_length=2,
+                subsample_threshold=1.0,
+            ),
+            raw_token_count=len(tokens),
+        )
+        examples = corpus.rebuild_examples(epoch=1)
+        pairs = set(zip(examples.centers.tolist(), examples.contexts.tolist()))
+        self.assertIn((ids[0], ids[1]), pairs)
+        self.assertIn((ids[2], ids[3]), pairs)
+        self.assertNotIn((ids[1], ids[2]), pairs)
+
+    def test_newlines_are_hard_sentence_breaks(self) -> None:
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        from word2vec.pipeline import process_corpus
+
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tiny.txt"
+            path.write_text("aa bb\ncc dd\n", encoding="utf-8")
+            corpus = process_corpus(
+                path,
+                ProcessingConfig(
+                    min_count=1,
+                    window_size=2,
+                    subsample_threshold=1.0,
+                    seed=0,
+                    architecture="skipgram",
+                    max_sentence_length=1000,
+                ),
+            )
+        self.assertEqual(len(corpus.sentences), 2)
+        examples = corpus.rebuild_examples(epoch=1)
+        pairs = set(zip(examples.centers.tolist(), examples.contexts.tolist()))
+        aa, bb, cc, dd = (corpus.vocab.word_to_id[w] for w in ("aa", "bb", "cc", "dd"))
+        self.assertIn((aa, bb), pairs)
+        self.assertNotIn((bb, cc), pairs)
+        self.assertIn((cc, dd), pairs)
 
 
 if __name__ == "__main__":
