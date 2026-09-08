@@ -22,7 +22,8 @@ That runs skip-gram negative sampling. Pass `architecture="cbow"` into
 `negative_sampling()` or `hierarchical_softmax()` for CBOW (mean of context
 vectors predicts the center word). Huffman HS does not allocate the NEG
 noise table. Frequent-word subsampling is redrawn each epoch on the encoded
-stream, then windows are rebuilt; it is not applied once in `process_corpus()`.
+stream, then windows are rebuilt inside newline sentences and 1000-token
+buffers (as in the original word2vec C code).
 
 ## Tests
 
