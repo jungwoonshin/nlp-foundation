@@ -16,6 +16,7 @@ class ProcessingConfig:
     build_huffman: bool = False
     build_negative_sampler: bool = False
     architecture: str = "skipgram"
+    max_sentence_length: int = 1000
 
     def validate(self) -> None:
         if self.min_count < 1:
@@ -32,6 +33,8 @@ class ProcessingConfig:
             raise ValueError("negative_table_size must be >= 1")
         if self.architecture not in {"skipgram", "cbow"}:
             raise ValueError("architecture must be 'skipgram' or 'cbow'")
+        if self.max_sentence_length < 2:
+            raise ValueError("max_sentence_length must be >= 2")
 
 
 def resolve_corpus_path(path: str | Path) -> Path:
