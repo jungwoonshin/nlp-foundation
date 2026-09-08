@@ -1,13 +1,9 @@
-"""Build skip-gram pairs and train word2vec (hierarchical softmax or NEG).
-
-`process()` loads the corpus and returns (center, context) ids.
-`hierarchical_softmax()` trains Huffman-path BCE; `negative_sampling()` trains
-noise-contrastive BCE (one positive context plus K negatives per center).
-"""
+"""Train skip-gram or CBOW with hierarchical softmax or negative sampling."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 import torch
@@ -36,8 +32,9 @@ def process(
     seed: int = 42,
     build_huffman: bool = False,
     build_negative_sampler: bool = False,
+    architecture: str = "skipgram",
 ) -> ProcessedCorpus:
-    """Load `path` and return a PyTorch Dataset of skip-gram pairs."""
+    """Load `path` and return a PyTorch Dataset of skip-gram or CBOW examples."""
 
     config = ProcessingConfig(
         min_count=min_count,
@@ -47,6 +44,7 @@ def process(
         seed=seed,
         build_huffman=build_huffman,
         build_negative_sampler=build_negative_sampler,
+        architecture=architecture,
     )
     return process_corpus(path, config)
 
@@ -62,7 +60,8 @@ def _log_corpus(processed: ProcessedCorpus) -> None:
     print(f"raw tokens: {processed.raw_token_count:,}")
     print(f"tokens after min_count + subsample: {processed.kept_token_count:,}")
     print(f"vocab size: {len(processed.vocab):,}")
-    print(f"skip-gram pairs: {len(processed.dataset):,}")
+    print(f"architecture: {processed.config.architecture}")
+    print(f"examples: {len(processed.dataset):,}")
 
 
 def _fit(
@@ -87,21 +86,45 @@ def _fit(
         print(f"epoch {epoch:3d}  loss={epoch_loss / max(epoch_pairs, 1):.4f}")
 
 
-def _hs_loss(model: nn.Module, batch: dict[str, torch.Tensor], device: torch.device) -> torch.Tensor:
+def _input_and_target(
+    batch: dict[str, torch.Tensor],
+    device: torch.device,
+    architecture: str,
+) -> tuple[torch.Tensor, torch.Tensor]:
     center = batch["center"].to(device)
     context = batch["context"].to(device)
-    return model(center, context)
+    if architecture == "cbow":
+        return context, center
+    return center, context
 
 
-def _neg_loss(model: nn.Module, batch: dict[str, torch.Tensor], device: torch.device) -> torch.Tensor:
-    center = batch["center"].to(device)
-    context = batch["context"].to(device)
+def _hs_loss(
+    model: nn.Module,
+    batch: dict[str, torch.Tensor],
+    device: torch.device,
+    architecture: str,
+) -> torch.Tensor:
+    inputs, target = _input_and_target(batch, device, architecture)
+    return model(inputs, target)
+
+
+def _neg_loss(
+    model: nn.Module,
+    batch: dict[str, torch.Tensor],
+    device: torch.device,
+    architecture: str,
+) -> torch.Tensor:
+    inputs, target = _input_and_target(batch, device, architecture)
     negatives = batch["negatives"].to(device)
-    return model(center, context, negatives)
+    return model(inputs, target, negatives)
 
 
-def hierarchical_softmax() -> None:
-    processed = process(build_huffman=True, build_negative_sampler=False)
+def hierarchical_softmax(architecture: str = "skipgram") -> None:
+    processed = process(
+        build_huffman=True,
+        build_negative_sampler=False,
+        architecture=architecture,
+    )
     if processed.vocab.coding is None:
         raise RuntimeError("Huffman codes are required for hierarchical softmax.")
     _log_corpus(processed)
@@ -112,11 +135,15 @@ def hierarchical_softmax() -> None:
         vocab_size=len(processed.vocab),
     ).to(device)
     loader = processed.dataloader(batch_size=BATCH_SIZE, shuffle=True, with_negatives=False)
-    _fit(model, loader, device, _hs_loss)
+    _fit(model, loader, device, partial(_hs_loss, architecture=architecture))
 
 
-def negative_sampling() -> None:
-    processed = process(build_huffman=False, build_negative_sampler=True)
+def negative_sampling(architecture: str = "skipgram") -> None:
+    processed = process(
+        build_huffman=False,
+        build_negative_sampler=True,
+        architecture=architecture,
+    )
     _log_corpus(processed)
     device = _device()
     model = NegativeSampling(
@@ -124,7 +151,7 @@ def negative_sampling() -> None:
         vocab_size=len(processed.vocab),
     ).to(device)
     loader = processed.dataloader(batch_size=BATCH_SIZE, shuffle=True, with_negatives=True)
-    _fit(model, loader, device, _neg_loss)
+    _fit(model, loader, device, partial(_neg_loss, architecture=architecture))
 
 
 if __name__ == "__main__":
