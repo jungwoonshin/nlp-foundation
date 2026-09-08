@@ -58,21 +58,28 @@ def _device() -> torch.device:
 def _log_corpus(processed: ProcessedCorpus) -> None:
     print(f"corpus: {DEFAULT_CORPUS}")
     print(f"raw tokens: {processed.raw_token_count:,}")
-    print(f"tokens after min_count + subsample: {processed.kept_token_count:,}")
+    print(f"encoded tokens (before per-epoch subsample): {len(processed.token_ids):,}")
     print(f"vocab size: {len(processed.vocab):,}")
     print(f"architecture: {processed.config.architecture}")
-    print(f"examples: {len(processed.dataset):,}")
+    print("windows are rebuilt each epoch after a new subsample draw")
 
 
 def _fit(
     model: nn.Module,
-    loader: torch.utils.data.DataLoader,
+    processed: ProcessedCorpus,
     device: torch.device,
     batch_loss: Callable[[nn.Module, dict[str, torch.Tensor], torch.device], torch.Tensor],
+    with_negatives: bool,
 ) -> None:
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     model.train()
     for epoch in range(1, EPOCHS + 1):
+        loader = processed.dataloader(
+            BATCH_SIZE,
+            epoch=epoch,
+            shuffle=True,
+            with_negatives=with_negatives,
+        )
         epoch_loss = 0.0
         epoch_pairs = 0
         for batch in loader:
@@ -83,7 +90,10 @@ def _fit(
             batch_pairs = int(batch["center"].shape[0])
             epoch_loss += float(loss) * batch_pairs
             epoch_pairs += batch_pairs
-        print(f"epoch {epoch:3d}  loss={epoch_loss / max(epoch_pairs, 1):.4f}")
+        print(
+            f"epoch {epoch:3d}  kept={processed.kept_token_count:,}  "
+            f"examples={epoch_pairs:,}  loss={epoch_loss / max(epoch_pairs, 1):.4f}"
+        )
 
 
 def _input_and_target(
@@ -134,8 +144,13 @@ def hierarchical_softmax(architecture: str = "skipgram") -> None:
         embedding_dim=EMBEDDING_DIM,
         vocab_size=len(processed.vocab),
     ).to(device)
-    loader = processed.dataloader(batch_size=BATCH_SIZE, shuffle=True, with_negatives=False)
-    _fit(model, loader, device, partial(_hs_loss, architecture=architecture))
+    _fit(
+        model,
+        processed,
+        device,
+        partial(_hs_loss, architecture=architecture),
+        with_negatives=False,
+    )
 
 
 def negative_sampling(architecture: str = "skipgram") -> None:
@@ -150,9 +165,15 @@ def negative_sampling(architecture: str = "skipgram") -> None:
         embedding_dim=EMBEDDING_DIM,
         vocab_size=len(processed.vocab),
     ).to(device)
-    loader = processed.dataloader(batch_size=BATCH_SIZE, shuffle=True, with_negatives=True)
-    _fit(model, loader, device, partial(_neg_loss, architecture=architecture))
+    _fit(
+        model,
+        processed,
+        device,
+        partial(_neg_loss, architecture=architecture),
+        with_negatives=True,
+    )
 
 
 if __name__ == "__main__":
     negative_sampling()
+    # hierarchical_softmax()
