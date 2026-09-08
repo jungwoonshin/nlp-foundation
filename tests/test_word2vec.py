@@ -6,10 +6,13 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
+from word2vec.config import ProcessingConfig
 from word2vec.dataset import SkipGramDataset, make_negative_collate
 from word2vec.hierarchical_softmax import HuffmanCoding, HierarchicalSoftmax
 from word2vec.negative_sampling import NegativeSampler, NegativeSampling
+from word2vec.pipeline import ProcessedCorpus
 from word2vec.skipgram import SkipGramPairBuilder
+from word2vec.subsample import FrequentWordSubsampler
 from word2vec.vocab import Vocab
 
 
@@ -154,6 +157,34 @@ class CbowTests(unittest.TestCase):
             blocked.update(int(x) for x in batch["context"][i].tolist() if int(x) >= 0)
             sampled = set(int(x) for x in batch["negatives"][i].tolist())
             self.assertTrue(sampled.isdisjoint(blocked))
+
+
+class PerEpochSubsampleTests(unittest.TestCase):
+    def test_same_keep_table_new_draws_each_epoch(self) -> None:
+        tokens = ["the"] * 400 + ["cat"] * 40 + ["dog"] * 40
+        vocab = Vocab.build(tokens, min_count=1, huffman=False)
+        ids = vocab.encode(tokens)
+        corpus = ProcessedCorpus(
+            vocab=vocab,
+            token_ids=ids,
+            subsampler=FrequentWordSubsampler(vocab, 1e-3),
+            config=ProcessingConfig(seed=0, window_size=2, architecture="skipgram"),
+            raw_token_count=len(tokens),
+        )
+        first = corpus.rebuild_examples(epoch=1)
+        first_kept = corpus.kept_token_count
+        second = corpus.rebuild_examples(epoch=2)
+        self.assertNotEqual(first_kept, 0)
+        self.assertGreater(len(first), 0)
+        self.assertGreater(len(second), 0)
+        same_seed = corpus.rebuild_examples(epoch=1)
+        self.assertEqual(len(same_seed), len(first))
+        self.assertTrue(torch.equal(same_seed.centers, first.centers))
+        self.assertTrue(torch.equal(same_seed.contexts, first.contexts))
+        self.assertNotEqual(
+            corpus.subsampler.apply(ids, np.random.default_rng(11)),
+            corpus.subsampler.apply(ids, np.random.default_rng(12)),
+        )
 
 
 if __name__ == "__main__":
