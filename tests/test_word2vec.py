@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from word2vec.dataset import SkipGramDataset, make_negative_collate
 from word2vec.hierarchical_softmax import HuffmanCoding, HierarchicalSoftmax
 from word2vec.negative_sampling import NegativeSampler, NegativeSampling
+from word2vec.skipgram import SkipGramPairBuilder
 from word2vec.vocab import Vocab
 
 
@@ -106,6 +107,52 @@ class CollateExcludeTests(unittest.TestCase):
         for i in range(4):
             blocked = {int(batch["center"][i]), int(batch["context"][i])}
             sampled = set(int(x) for x in negatives[i].tolist())
+            self.assertTrue(sampled.isdisjoint(blocked))
+
+
+class CbowTests(unittest.TestCase):
+    def test_builder_pads_context_bags(self) -> None:
+        rng = np.random.default_rng(0)
+        builder = SkipGramPairBuilder(window_size=2, rng=rng)
+        centers, bags = builder.build_cbow([0, 1, 2, 3, 4])
+        self.assertEqual(centers.ndim, 1)
+        self.assertEqual(bags.ndim, 2)
+        self.assertEqual(bags.shape[0], centers.shape[0])
+        self.assertEqual(bags.shape[1], 4)
+        self.assertTrue((bags >= -1).all())
+
+    def test_neg_and_hs_accept_context_bags(self) -> None:
+        bag = torch.tensor([[0, 1, -1], [2, 3, 1]])
+        target = torch.tensor([4, 0])
+        negatives = torch.randint(0, 8, (2, 3))
+        neg_model = NegativeSampling(embedding_dim=5, vocab_size=8)
+        neg_loss = neg_model(bag, target, negatives)
+        self.assertEqual(tuple(neg_loss.shape), ())
+        neg_loss.backward()
+
+        coding = HuffmanCoding.from_counts([5, 4, 3, 2, 1, 1, 1, 1])
+        hs = HierarchicalSoftmax(coding, embedding_dim=5, vocab_size=8)
+        hs_loss = hs(bag, target)
+        self.assertEqual(tuple(hs_loss.shape), ())
+        hs_loss.backward()
+
+    def test_collate_excludes_center_and_bag(self) -> None:
+        tokens = [chr(ord("a") + i) for i in range(20) for _ in range(3)]
+        vocab = Vocab.build(tokens, min_count=1, huffman=False)
+        sampler = NegativeSampler(vocab, power=0.75, table_size=200, rng=np.random.default_rng(1))
+        centers = np.array([0, 1], dtype=np.int64)
+        bags = np.array([[2, 3, -1], [4, 5, 6]], dtype=np.int64)
+        loader = DataLoader(
+            SkipGramDataset(centers, bags),
+            batch_size=2,
+            shuffle=False,
+            collate_fn=make_negative_collate(sampler, num_negatives=6),
+        )
+        batch = next(iter(loader))
+        for i in range(2):
+            blocked = {int(batch["center"][i])}
+            blocked.update(int(x) for x in batch["context"][i].tolist() if int(x) >= 0)
+            sampled = set(int(x) for x in batch["negatives"][i].tolist())
             self.assertTrue(sampled.isdisjoint(blocked))
 
 
