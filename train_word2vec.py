@@ -58,10 +58,10 @@ def _device() -> torch.device:
 def _log_corpus(processed: ProcessedCorpus) -> None:
     print(f"corpus: {DEFAULT_CORPUS}")
     print(f"raw tokens: {processed.raw_token_count:,}")
-    print(f"encoded tokens (before per-epoch subsample): {len(processed.token_ids):,}")
+    print(f"encoded tokens (before per-epoch subsample): {sum(len(s) for s in processed.sentences):,}")
     print(f"vocab size: {len(processed.vocab):,}")
     print(f"architecture: {processed.config.architecture}")
-    print("windows are rebuilt each epoch after a new subsample draw")
+    print("each epoch: subsample each sentence, cut at max_sentence_length, then windows")
 
 
 def _fit(
