@@ -1,6 +1,7 @@
 # nlp-foundation
 
-Word2vec from scratch (skip-gram with hierarchical softmax or negative sampling).
+Word2vec from scratch: skip-gram or CBOW, with hierarchical softmax or
+negative sampling.
 
 ## Data
 
@@ -17,9 +18,10 @@ See `data/SOURCE.txt` for download details.
 python train_word2vec.py
 ```
 
-That runs negative sampling. For Huffman hierarchical softmax, call
-`hierarchical_softmax()` in that file (it builds Huffman codes and does
-not allocate the NEG noise table).
+That runs skip-gram negative sampling. Pass `architecture="cbow"` into
+`negative_sampling()` or `hierarchical_softmax()` for CBOW (mean of context
+vectors predicts the center word). Huffman HS does not allocate the NEG
+noise table.
 
 ## Tests
 
