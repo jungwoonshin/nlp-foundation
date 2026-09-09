@@ -82,20 +82,20 @@ class NegativeSampling(nn.Module):
         return (pos_bce + neg_bce.sum(dim=1)).mean()
 
 class SubwordNegativeSampling(nn.Module):
-    """Subword negative sampling (two embedding banks + BCE).
+    """Skip-gram NEG with FastText inputs: center is word + hashed n-grams."""
 
-    Subword is only used for center word vector representation.
-    Context word vector is still predicted by the center word vector.
-
-    Subword based representation is based on bucket hashing method. 
-    Given 
-    """
-
-    def __init__(self, embedding_dim: int, vocab_size: int, vocab: Vocab) -> None:
+    def __init__(self, embedding_dim: int, vocab: Vocab) -> None:
         super().__init__()
+        vocab_size = len(vocab)
         self.context_embedding = nn.Embedding(vocab_size, embedding_dim)
-        self.subwordifier = Subwordifier(embedding_dim=embedding_dim, vocab_size=vocab_size, num_buckets=2_000_000, \
-            words=vocab.id_to_word, minn=3, maxn=6)
+        self.subwordifier = Subwordifier(
+            embedding_dim=embedding_dim,
+            vocab_size=vocab_size,
+            num_buckets=2_000_000,
+            words=vocab.id_to_word,
+            minn=3,
+            maxn=6,
+        )
 
     def forward(
         self,

@@ -61,12 +61,14 @@ class Subwordifier(torch.nn.Module):
         num_buckets: int,
         words: Sequence[str] | None = None,
         minn: int = 3,
-        maxn: int | None = None,
+        maxn: int = 6,
         device: torch.device = torch.device("cpu"),
     ) -> None:
         super().__init__()
         if num_buckets < 1:
             raise ValueError("num_buckets must be >= 1")
+        if minn < 1 or maxn < minn:
+            raise ValueError("require 1 <= minn <= maxn")
         self.subword_embeddings = torch.nn.Embedding(num_buckets, embedding_dim, device=device)
         self.center_embeddings = torch.nn.Embedding(vocab_size, embedding_dim, device=device)
         self.embedding_dim = embedding_dim
@@ -85,7 +87,7 @@ class Subwordifier(torch.nn.Module):
         """Bucket ids for every character n-gram of `word` (not the word row)."""
         return [self.hash_ngram(gram) for gram in character_ngrams(word, self.minn, self.maxn)]
 
-    def precompute_bucket_hashes(self) -> list[list[int]]:
+    def precompute_bucket_hashes(self) -> dict[int, list[int]]:
         if self.words is None:
             raise ValueError("id_to_word strings are required to precompute n-gram hashes")
         if len(self.words) != self.vocab_size:
@@ -120,4 +122,4 @@ class Subwordifier(torch.nn.Module):
 
     # TO DO: Vectorized implementation
     def encode_vectorized(self, center_index: torch.Tensor) -> torch.Tensor:
-        pass
+        raise NotImplementedError("padded batched encode is not implemented yet")

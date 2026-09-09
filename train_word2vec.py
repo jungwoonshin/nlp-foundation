@@ -70,12 +70,19 @@ def _fit(
     device: torch.device,
     batch_loss: Callable[[nn.Module, dict[str, torch.Tensor], torch.device], torch.Tensor],
     with_negatives: bool,
+    *,
+    epochs: int | None = None,
+    batch_size: int | None = None,
+    learning_rate: float | None = None,
 ) -> None:
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    epochs = EPOCHS if epochs is None else epochs
+    batch_size = BATCH_SIZE if batch_size is None else batch_size
+    learning_rate = LEARNING_RATE if learning_rate is None else learning_rate
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     model.train()
-    for epoch in range(1, EPOCHS + 1):
+    for epoch in range(1, epochs + 1):
         loader = processed.dataloader(
-            BATCH_SIZE,
+            batch_size,
             epoch=epoch,
             shuffle=True,
             with_negatives=with_negatives,
