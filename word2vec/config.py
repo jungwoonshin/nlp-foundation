@@ -18,6 +18,7 @@ class ProcessingConfig:
     architecture: str = "skipgram"
     max_sentence_length: int = 1000
     max_sentences: int | None = None
+    max_examples: int | None = None
 
     def validate(self) -> None:
         if self.min_count < 1:
@@ -38,6 +39,8 @@ class ProcessingConfig:
             raise ValueError("max_sentence_length must be >= 2")
         if self.max_sentences is not None and self.max_sentences < 1:
             raise ValueError("max_sentences must be >= 1")
+        if self.max_examples is not None and self.max_examples < 1:
+            raise ValueError("max_examples must be >= 1")
 
 
 def resolve_corpus_path(path: str | Path) -> Path:

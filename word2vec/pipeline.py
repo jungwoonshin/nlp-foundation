@@ -59,6 +59,10 @@ class ProcessedCorpus:
                     parts.append(builder.build(buffer))
         self.kept_token_count = kept_total
         centers, contexts = _concat_windows(parts)
+        limit = self.config.max_examples
+        if limit is not None:
+            centers = centers[:limit]
+            contexts = contexts[:limit]
         self.dataset = SkipGramDataset(centers, contexts)
         return self.dataset
 
