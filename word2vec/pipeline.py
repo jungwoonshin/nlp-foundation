@@ -94,7 +94,9 @@ def process_corpus(path: str | Path, config: ProcessingConfig | None = None) -> 
     corpus_path = resolve_corpus_path(path)
     rng = np.random.default_rng(config.seed)
 
-    raw_sentences = WhitespaceCorpus(corpus_path).sentences()
+    raw_sentences = WhitespaceCorpus(
+        corpus_path, max_sentences=config.max_sentences
+    ).sentences()
     vocab = Vocab.build(
         [token for sentence in raw_sentences for token in sentence],
         min_count=config.min_count,
