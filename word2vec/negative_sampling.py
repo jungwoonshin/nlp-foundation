@@ -6,7 +6,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from word2vec.embed import lookup_mean
-from word2vec.subwordifier import Subwordifier
+from word2vec.subword import Subwordifier
 from word2vec.vocab import Vocab
 
 
