@@ -13,6 +13,12 @@ text8 is the first 100MB of processed English Wikipedia (17,005,207 words).
 text8m1.txt is the first 1,000,000 words of that file (~5.9MB, 52,754 types),
 kept small enough to store in git.
 
+AG News is the smallest / easiest set in Joulin et al., "Bag of Tricks
+for Efficient Text Classification" (Zhang et al. 2015 split): 120,000
+train docs, 4 classes. `python prepare_ag_news.py` (or `train_fasttext.py`)
+downloads the public train.csv into data/raw/ and writes one lowercase
+article per line to data/ag_news.txt for WhitespaceCorpus / process().
+
 The zip and full text8 live in data/raw/ (gitignored). To restore them:
 
   curl -L -o data/raw/text8.zip http://mattmahoney.net/dc/text8.zip

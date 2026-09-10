@@ -1,4 +1,5 @@
 data/raw/
+data/ag_news.txt
 __pycache__/
 *.pyc
 

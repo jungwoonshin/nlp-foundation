@@ -13,6 +13,7 @@ from word2vec.config import ProcessingConfig
 from word2vec.hierarchical_softmax import HierarchicalSoftmax
 from word2vec.negative_sampling import NegativeSampling
 from word2vec.pipeline import ProcessedCorpus, process_corpus
+from word2vec.negative_sampling import SubwordNegativeSampling
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_CORPUS = ROOT / "data" / "text8m1.txt"
@@ -33,6 +34,7 @@ def process(
     build_huffman: bool = False,
     build_negative_sampler: bool = False,
     architecture: str = "skipgram",
+    max_sentences: int | None = None,
 ) -> ProcessedCorpus:
     """Load `path` and return a PyTorch Dataset of skip-gram or CBOW examples."""
 
@@ -45,6 +47,7 @@ def process(
         build_huffman=build_huffman,
         build_negative_sampler=build_negative_sampler,
         architecture=architecture,
+        max_sentences=max_sentences,
     )
     return process_corpus(path, config)
 
@@ -55,8 +58,8 @@ def _device() -> torch.device:
     return device
 
 
-def _log_corpus(processed: ProcessedCorpus) -> None:
-    print(f"corpus: {DEFAULT_CORPUS}")
+def _log_corpus(processed: ProcessedCorpus, path: Path | None = None) -> None:
+    print(f"corpus: {path or DEFAULT_CORPUS}")
     print(f"raw tokens: {processed.raw_token_count:,}")
     print(f"encoded tokens (before per-epoch subsample): {sum(len(s) for s in processed.sentences):,}")
     print(f"vocab size: {len(processed.vocab):,}")
@@ -180,7 +183,36 @@ def negative_sampling(architecture: str = "skipgram") -> None:
         with_negatives=True,
     )
 
+"""Train skip-gram FastText (subword NEG) on the word2vec corpus pipeline."""
+def subword_negative_sampling(architecture: str = "skipgram") -> None:
+    if architecture != "skipgram":
+        raise ValueError("Subword NEG only supports skipgram; CBOW bags are not encoded yet.")
+    processed = process(
+        DEFAULT_CORPUS,
+        build_huffman=False,
+        build_negative_sampler=True,
+        architecture=architecture,
+    )
+    _log_corpus(processed)
+    device = _device()
+    model = SubwordNegativeSampling(
+        embedding_dim=EMBEDDING_DIM,
+        vocab=processed.vocab,
+    ).to(device)
+    _fit(
+        model,
+        processed,
+        device,
+        partial(_neg_loss, architecture=architecture),
+        with_negatives=True,
+        epochs=EPOCHS,
+        batch_size=BATCH_SIZE,
+        learning_rate=LEARNING_RATE,
+    )
+
+
 
 if __name__ == "__main__":
     negative_sampling()
     # hierarchical_softmax()
+    # subword_negative_sampling()
