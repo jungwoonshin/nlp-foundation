@@ -146,9 +146,9 @@ class CorpusReadLimitTests(unittest.TestCase):
         freqs = first["weights"][present].tolist()
         self.assertEqual(set(ids), {alpha, beta})
         by_id = dict(zip(ids, freqs))
-        self.assertAlmostEqual(by_id[alpha], 2 / 3)
-        self.assertAlmostEqual(by_id[beta], 1 / 3)
-        self.assertAlmostEqual(sum(freqs), 1.0)
+        self.assertAlmostEqual(by_id[alpha], 2.0)
+        self.assertAlmostEqual(by_id[beta], 1.0)
+        self.assertAlmostEqual(sum(freqs), 3.0)
         self.assertEqual(int(first["label"]), processed.label_to_id["3"])
         self.assertEqual(int(examples[1]["label"]), processed.label_to_id["2"])
         sports, win = (processed.vocab.word_to_id[w] for w in ("sports", "win"))
@@ -165,13 +165,11 @@ class CorpusReadLimitTests(unittest.TestCase):
         self.assertIn("features", batch)
         self.assertIn("weights", batch)
         self.assertIn("ngrams", batch)
-        self.assertIn("token_count", batch)
         self.assertIn("label", batch)
         self.assertEqual(tuple(batch["features"].shape), (2, 2))
         self.assertEqual(tuple(batch["ngrams"].shape), (2, 2, 2))
         self.assertEqual(batch["ngrams"][1].tolist(), [[sports, win], [-1, -1]])
-        self.assertEqual(int(first["token_count"]), 3)
-        self.assertEqual(batch["token_count"].tolist(), [3, 2])
+        self.assertAlmostEqual(float(first["weights"].sum()), 3.0)
         self.assertNotIn("negatives", batch)
         self.assertNotIn("center", batch)
         short_batch = pad_fasttext_collate([second])
@@ -214,7 +212,6 @@ class CorpusReadLimitTests(unittest.TestCase):
                 example["features"].unsqueeze(0),
                 example["weights"].unsqueeze(0),
                 example["ngrams"].unsqueeze(0),
-                example["token_count"].unsqueeze(0),
             )
         # (e_alpha + e_beta + e_bigram) / 3
         self.assertTrue(torch.allclose(hidden, torch.tensor([[1 / 3, 1 / 3, 1.0, 0.0]])))
