@@ -41,19 +41,23 @@ class SkipGramDataset(Dataset):
         }
 
 
-def normalized_feature_frequency(token_ids: Sequence[int]) -> tuple[np.ndarray, np.ndarray]:
-    """Unique feature ids and counts / document length (sum of weights is 1)."""
+def feature_frequency(token_ids: Sequence[int]) -> tuple[np.ndarray, np.ndarray]:
+    """Unique feature ids and raw occurrence counts."""
     if not token_ids:
         raise ValueError("Need at least one token to form FastText features.")
     counts = Counter(int(token_id) for token_id in token_ids)
-    total = float(sum(counts.values()))
     features = np.fromiter(counts, dtype=np.int64, count=len(counts))
     weights = np.fromiter(
-        (counts[int(feature)] / total for feature in features),
+        (counts[int(feature)] for feature in features),
         dtype=np.float32,
         count=len(counts),
     )
     return features, weights
+
+
+def normalized_feature_frequency(token_ids: Sequence[int]) -> tuple[np.ndarray, np.ndarray]:
+    """Unique feature ids and raw counts. Kept as an alias of `feature_frequency`."""
+    return feature_frequency(token_ids)
 
 
 def word_ngrams(token_ids: Sequence[int], ngram_size: int) -> np.ndarray:
@@ -76,17 +80,15 @@ class FastTextDataset(Dataset):
         features: Sequence[np.ndarray],
         weights: Sequence[np.ndarray],
         ngrams: Sequence[np.ndarray],
-        token_counts: Sequence[int],
         labels: Sequence[int],
     ) -> None:
-        if not (len(features) == len(weights) == len(ngrams) == len(token_counts) == len(labels)):
-            raise ValueError("features, weights, ngrams, token_counts, and labels must align")
+        if not (len(features) == len(weights) == len(ngrams) == len(labels)):
+            raise ValueError("features, weights, ngrams, and labels must align")
         if not features:
             raise ValueError("Need at least one FastText example")
         self.features = [torch.as_tensor(row, dtype=torch.long) for row in features]
         self.weights = [torch.as_tensor(row, dtype=torch.float32) for row in weights]
         self.ngrams = [torch.as_tensor(np.array(row, copy=True), dtype=torch.long) for row in ngrams]
-        self.token_counts = torch.as_tensor(token_counts, dtype=torch.long)
         self.labels = torch.as_tensor(labels, dtype=torch.long)
         for feature_row, weight_row, ngram_row in zip(self.features, self.weights, self.ngrams):
             if feature_row.ndim != 1 or weight_row.ndim != 1:
@@ -104,7 +106,6 @@ class FastTextDataset(Dataset):
             "features": self.features[index],
             "weights": self.weights[index],
             "ngrams": self.ngrams[index],
-            "token_count": self.token_counts[index],
             "label": self.labels[index],
         }
 
@@ -131,7 +132,6 @@ def pad_fasttext_collate(
         "features": features,
         "weights": weights,
         "ngrams": ngrams,
-        "token_count": torch.stack([item["token_count"] for item in batch]),
         "label": torch.stack([item["label"] for item in batch]),
     }
 

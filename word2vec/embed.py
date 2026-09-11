@@ -25,7 +25,7 @@ def lookup_weighted(
     token_ids: torch.Tensor,
     feature_weights: torch.Tensor,
 ) -> torch.Tensor:
-    """Weighted bag: `sum(embed(id) * freq)` for ids >= 0. Weights should sum to 1."""
+    """Weighted bag: `sum(embed(id) * freq)` for ids >= 0."""
     if token_ids.ndim != 2 or feature_weights.shape != token_ids.shape:
         raise ValueError("token_ids and feature_weights must be 2-D with the same shape")
     present = token_ids >= 0

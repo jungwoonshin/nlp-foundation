@@ -12,7 +12,7 @@ from word2vec.dataset import (
     FastTextDataset,
     SkipGramDataset,
     make_negative_collate,
-    normalized_feature_frequency,
+    feature_frequency,
     pad_fasttext_collate,
     word_ngrams,
 )
@@ -55,7 +55,7 @@ class ProcessedCorpus:
         return self._rebuild_windows(epoch)
 
     def _rebuild_fasttext(self) -> FastTextDataset:
-        """One document: unique tokens with count/length weights, label as target."""
+        """One document: unique tokens with raw counts, label as target."""
         if self.labels is None or self.label_to_id is None:
             raise RuntimeError("FastText examples need a class label on every document.")
         documents = list(zip(self.sentences, self.labels, strict=True))
@@ -64,7 +64,6 @@ class ProcessedCorpus:
         feature_rows: list[np.ndarray] = []
         weight_rows: list[np.ndarray] = []
         ngram_rows: list[np.ndarray] = []
-        token_counts: list[int] = []
         label_ids: list[int] = []
         kept_total = 0
         ngram_size = self.config.ngram_size
@@ -72,11 +71,10 @@ class ProcessedCorpus:
             if label is None:
                 raise RuntimeError("FastText examples need a class label on every document.")
             kept_total += len(sentence)
-            features, weights = normalized_feature_frequency(sentence)
+            features, weights = feature_frequency(sentence)
             feature_rows.append(features)
             weight_rows.append(weights)
             ngram_rows.append(word_ngrams(sentence, ngram_size))
-            token_counts.append(len(sentence))
             label_ids.append(self.label_to_id[label])
         if not feature_rows:
             raise ValueError("No labeled documents left after vocabulary filtering.")
@@ -85,7 +83,6 @@ class ProcessedCorpus:
             feature_rows,
             weight_rows,
             ngram_rows,
-            token_counts,
             label_ids,
         )
         return self.dataset
