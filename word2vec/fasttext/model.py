@@ -57,30 +57,28 @@ class BOW_FastText(nn.Module):
         features: torch.Tensor,
         weights: torch.Tensor,
         ngrams: torch.Tensor,
-        token_count: torch.Tensor,
     ) -> torch.Tensor:
-        """Average every feature in the bag: words and hashed n-grams from A."""
-        word_mean = lookup_weighted(self.input_embedding, features, weights)
-        counts = token_count.to(dtype=word_mean.dtype).reshape(-1, 1)
-        word_sum = word_mean * counts
+        """Sum freq * vector for words and n-grams, then divide by total feature count."""
+        present_words = features >= 0
+        word_freq = weights.to(dtype=self.input_embedding.weight.dtype) * present_words
+        word_sum = lookup_weighted(self.input_embedding, features, word_freq)
+        word_count = word_freq.sum(dim=1, keepdim=True)
 
         ngram_ids = self.ngram_ids(ngrams)
-        present = ngram_ids >= 0
-        ngram_vectors = self.input_embedding(ngram_ids.clamp(min=0))
-        ngram_mask = present.unsqueeze(-1).to(dtype=ngram_vectors.dtype)
-        ngram_sum = (ngram_vectors * ngram_mask).sum(dim=1)
-        ngram_count = ngram_mask.sum(dim=1)
+        present_ngrams = ngram_ids >= 0
+        ngram_freq = present_ngrams.to(dtype=word_sum.dtype)
+        ngram_sum = lookup_weighted(self.input_embedding, ngram_ids, ngram_freq)
+        ngram_count = ngram_freq.sum(dim=1, keepdim=True)
 
-        return (word_sum + ngram_sum) / (counts + ngram_count).clamp(min=1.0)
+        return (word_sum + ngram_sum) / (word_count + ngram_count).clamp(min=1.0)
 
     def forward(
         self,
         features: torch.Tensor,
         weights: torch.Tensor,
         ngrams: torch.Tensor,
-        token_count: torch.Tensor,
         labels: torch.Tensor,
     ) -> torch.Tensor:
-        hidden = self.encode(features, weights, ngrams, token_count)
+        hidden = self.encode(features, weights, ngrams)
         logits = self.classifier(hidden)
         return F.cross_entropy(logits, labels)

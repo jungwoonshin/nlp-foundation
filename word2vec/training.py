@@ -159,7 +159,6 @@ def classification_loss(
         batch["features"].to(chosen_device),
         batch["weights"].to(chosen_device),
         batch["ngrams"].to(chosen_device),
-        batch["token_count"].to(chosen_device),
         batch["label"].to(chosen_device),
     )
 
