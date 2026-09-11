@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 
 from prepare_ag_news import _tokenize, prepare_ag_news
 from word2vec.config import ProcessingConfig
-from word2vec.corpus import WhitespaceCorpus
+from word2vec.corpus import LABEL_PREFIX, WhitespaceCorpus
 from word2vec.pipeline import process_corpus
 
 
@@ -17,7 +17,7 @@ class AgNewsPrepareTests(unittest.TestCase):
             ["wall", "st", "bears", "reuters"],
         )
 
-    def test_prepare_writes_one_line_per_article_without_label(self) -> None:
+    def test_prepare_writes_one_labeled_line_per_article(self) -> None:
         csv_text = (
             '"3","Wall St. Bears (Reuters)","Short-sellers are seeing green."\n'
             '"2","Sports Win","The team scored twice."\n'
@@ -32,10 +32,21 @@ class AgNewsPrepareTests(unittest.TestCase):
         self.assertEqual(len(lines), 2)
         self.assertEqual(
             lines[0].split(),
-            ["wall", "st", "bears", "reuters", "short", "sellers", "are", "seeing", "green"],
+            [
+                f"{LABEL_PREFIX}3",
+                "wall",
+                "st",
+                "bears",
+                "reuters",
+                "short",
+                "sellers",
+                "are",
+                "seeing",
+                "green",
+            ],
         )
-        self.assertNotIn("3", lines[0].split())
-        self.assertEqual(lines[1].split()[:2], ["sports", "win"])
+        self.assertEqual(lines[1].split()[:2], [f"{LABEL_PREFIX}2", "sports"])
+        self.assertNotEqual(lines[0], lines[1])
 
 
 class CorpusReadLimitTests(unittest.TestCase):
