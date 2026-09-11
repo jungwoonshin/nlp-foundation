@@ -4,10 +4,16 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import torch
+
 from prepare_ag_news import _tokenize, prepare_ag_news
 from word2vec.config import ProcessingConfig
 from word2vec.corpus import LABEL_PREFIX, WhitespaceCorpus
+from word2vec.fasttext.hashing import hash_word_ngram
+from word2vec.fasttext.model import BOW_FastText
+from word2vec.dataset import pad_fasttext_collate
 from word2vec.pipeline import process_corpus
+from word2vec.subword import fasttext_hash
 
 
 class AgNewsPrepareTests(unittest.TestCase):
@@ -145,14 +151,73 @@ class CorpusReadLimitTests(unittest.TestCase):
         self.assertAlmostEqual(sum(freqs), 1.0)
         self.assertEqual(int(first["label"]), processed.label_to_id["3"])
         self.assertEqual(int(examples[1]["label"]), processed.label_to_id["2"])
+        sports, win = (processed.vocab.word_to_id[w] for w in ("sports", "win"))
+        first_ngrams = first["ngrams"]
+        self.assertEqual(tuple(first_ngrams.shape), (2, 2))
+        self.assertEqual(first_ngrams.tolist(), [[alpha, beta], [beta, alpha]])
+        second = examples[1]
+        self.assertEqual(tuple(second["features"].shape), (2,))
+        self.assertEqual(tuple(second["ngrams"].shape), (1, 2))
+        self.assertEqual(second["ngrams"].tolist(), [[sports, win]])
         batch = next(
             iter(processed.dataloader(batch_size=2, epoch=1, shuffle=False, with_negatives=False))
         )
         self.assertIn("features", batch)
         self.assertIn("weights", batch)
+        self.assertIn("ngrams", batch)
+        self.assertIn("token_count", batch)
         self.assertIn("label", batch)
+        self.assertEqual(tuple(batch["features"].shape), (2, 2))
+        self.assertEqual(tuple(batch["ngrams"].shape), (2, 2, 2))
+        self.assertEqual(batch["ngrams"][1].tolist(), [[sports, win], [-1, -1]])
+        self.assertEqual(int(first["token_count"]), 3)
+        self.assertEqual(batch["token_count"].tolist(), [3, 2])
         self.assertNotIn("negatives", batch)
         self.assertNotIn("center", batch)
+        short_batch = pad_fasttext_collate([second])
+        self.assertEqual(tuple(short_batch["features"].shape), (1, 2))
+        self.assertEqual(tuple(short_batch["ngrams"].shape), (1, 1, 2))
+
+    def test_word_ngram_hash_matches_fasttext_combine(self) -> None:
+        expected = (
+            fasttext_hash("alpha") * 116049371 + fasttext_hash("beta")
+        ) & 0xFFFFFFFFFFFFFFFF
+        self.assertEqual(hash_word_ngram(["alpha", "beta"]), expected)
+
+    def test_fasttext_averages_word_and_hashed_ngram_embeddings(self) -> None:
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "docs.txt"
+            path.write_text(f"{LABEL_PREFIX}3 alpha beta\n", encoding="utf-8")
+            processed = process_corpus(
+                path,
+                ProcessingConfig(
+                    min_count=1,
+                    subsample_threshold=1.0,
+                    architecture="fasttext",
+                ),
+            )
+        model = BOW_FastText(
+            embedding_dim=4,
+            vocab=processed.vocab,
+            num_classes=2,
+            num_buckets=16,
+        )
+        with torch.no_grad():
+            model.input_embedding.weight.fill_(0)
+            alpha, beta = (processed.vocab.word_to_id[w] for w in ("alpha", "beta"))
+            model.input_embedding.weight[alpha] = torch.tensor([1.0, 0.0, 0.0, 0.0])
+            model.input_embedding.weight[beta] = torch.tensor([0.0, 1.0, 0.0, 0.0])
+            ngram_id = len(processed.vocab) + hash_word_ngram(["alpha", "beta"]) % 16
+            model.input_embedding.weight[ngram_id] = torch.tensor([0.0, 0.0, 3.0, 0.0])
+            example = processed.rebuild_examples(epoch=1)[0]
+            hidden = model.encode(
+                example["features"].unsqueeze(0),
+                example["weights"].unsqueeze(0),
+                example["ngrams"].unsqueeze(0),
+                example["token_count"].unsqueeze(0),
+            )
+        # (e_alpha + e_beta + e_bigram) / 3
+        self.assertTrue(torch.allclose(hidden, torch.tensor([[1 / 3, 1 / 3, 1.0, 0.0]])))
 
     def test_fasttext_rejects_unlabeled_documents(self) -> None:
         with TemporaryDirectory() as tmp:
