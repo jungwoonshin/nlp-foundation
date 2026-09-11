@@ -84,6 +84,85 @@ class CorpusReadLimitTests(unittest.TestCase):
         self.assertNotIn("unseenuniquetoken", processed.vocab.word_to_id)
         self.assertEqual(processed.vocab.decode(processed.sentences[0][0]), "alpha")
         self.assertEqual(processed.vocab.decode(processed.sentences[99][0]), "omega")
+        self.assertEqual(processed.labels, [None] * 100)
+
+    def test_process_keeps_class_labels_and_one_document_per_line(self) -> None:
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "docs.txt"
+            path.write_text(
+                f"{LABEL_PREFIX}3 wall st bears\n{LABEL_PREFIX}2 sports win\n",
+                encoding="utf-8",
+            )
+            processed = process_corpus(
+                path,
+                ProcessingConfig(
+                    min_count=1,
+                    subsample_threshold=1.0,
+                    architecture="skipgram",
+                ),
+            )
+        self.assertEqual(len(processed.sentences), 2)
+        self.assertEqual(processed.labels, ["3", "2"])
+        self.assertEqual(
+            [processed.vocab.decode(i) for i in processed.sentences[0]],
+            ["wall", "st", "bears"],
+        )
+        self.assertEqual(
+            [processed.vocab.decode(i) for i in processed.sentences[1]],
+            ["sports", "win"],
+        )
+        self.assertNotIn(f"{LABEL_PREFIX}3", processed.vocab.word_to_id)
+        self.assertNotIn("3", processed.vocab.word_to_id)
+        self.assertEqual(processed.label_to_id, {"2": 0, "3": 1})
+
+    def test_fasttext_examples_are_normalized_frequencies_and_labels(self) -> None:
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "docs.txt"
+            path.write_text(
+                f"{LABEL_PREFIX}3 alpha beta alpha\n{LABEL_PREFIX}2 sports win\n",
+                encoding="utf-8",
+            )
+            processed = process_corpus(
+                path,
+                ProcessingConfig(
+                    min_count=1,
+                    subsample_threshold=1.0,
+                    architecture="fasttext",
+                ),
+            )
+        examples = processed.rebuild_examples(epoch=1)
+        self.assertEqual(len(examples), 2)
+        self.assertEqual(processed.labels, ["3", "2"])
+        alpha, beta = (processed.vocab.word_to_id[w] for w in ("alpha", "beta"))
+        first = examples[0]
+        present = first["features"] >= 0
+        ids = first["features"][present].tolist()
+        freqs = first["weights"][present].tolist()
+        self.assertEqual(set(ids), {alpha, beta})
+        by_id = dict(zip(ids, freqs))
+        self.assertAlmostEqual(by_id[alpha], 2 / 3)
+        self.assertAlmostEqual(by_id[beta], 1 / 3)
+        self.assertAlmostEqual(sum(freqs), 1.0)
+        self.assertEqual(int(first["label"]), processed.label_to_id["3"])
+        self.assertEqual(int(examples[1]["label"]), processed.label_to_id["2"])
+        batch = next(
+            iter(processed.dataloader(batch_size=2, epoch=1, shuffle=False, with_negatives=False))
+        )
+        self.assertIn("features", batch)
+        self.assertIn("weights", batch)
+        self.assertIn("label", batch)
+        self.assertNotIn("negatives", batch)
+        self.assertNotIn("center", batch)
+
+    def test_fasttext_rejects_unlabeled_documents(self) -> None:
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "docs.txt"
+            path.write_text("alpha beta\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                process_corpus(
+                    path,
+                    ProcessingConfig(min_count=1, architecture="fasttext"),
+                )
 
 
 if __name__ == "__main__":

@@ -19,6 +19,9 @@ BATCH_SIZE = 256
 LEARNING_RATE = 0.025
 EPOCHS = 200
 TINY_CORPUS_TEXT = "alpha beta gamma delta epsilon zeta eta theta\n"
+TINY_LABELED_CORPUS_TEXT = (
+    "__label__3 alpha beta alpha gamma\n__label__2 delta epsilon delta zeta\n"
+)
 
 
 def process(
@@ -66,7 +69,11 @@ def log_corpus(processed: ProcessedCorpus, path: Path | None = None) -> None:
     print(f"encoded tokens (before per-epoch subsample): {sum(len(s) for s in processed.sentences):,}")
     print(f"vocab size: {len(processed.vocab):,}")
     print(f"architecture: {processed.config.architecture}")
-    print("each epoch: subsample each sentence, cut at max_sentence_length, then windows")
+    if processed.config.architecture == "fasttext":
+        print(f"classes: {len(processed.label_to_id or {})}")
+        print("each example: normalized feature frequency -> class label")
+    else:
+        print("each epoch: subsample each sentence, cut at max_sentence_length, then windows")
 
 
 def fit(
@@ -99,7 +106,7 @@ def fit(
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            batch_pairs = int(batch["center"].shape[0])
+            batch_pairs = int(batch["label" if "label" in batch else "center"].shape[0])
             epoch_loss += float(loss) * batch_pairs
             epoch_pairs += batch_pairs
         print(
@@ -141,14 +148,29 @@ def neg_loss(
     return model(inputs, target, negatives)
 
 
-def write_tiny_corpus(path: Path) -> Path:
-    path.write_text(TINY_CORPUS_TEXT, encoding="utf-8")
+def classification_loss(
+    model: nn.Module,
+    batch: dict[str, torch.Tensor],
+    chosen_device: torch.device,
+) -> torch.Tensor:
+    return model(
+        batch["features"].to(chosen_device),
+        batch["weights"].to(chosen_device),
+        batch["label"].to(chosen_device),
+    )
+
+
+def write_tiny_corpus(path: Path, text: str = TINY_CORPUS_TEXT) -> Path:
+    path.write_text(text, encoding="utf-8")
     return path
 
 
-def tiny_corpus() -> TemporaryDirectory[str]:
+def tiny_corpus(*, labeled: bool = False) -> TemporaryDirectory[str]:
     tmp = TemporaryDirectory()
-    write_tiny_corpus(Path(tmp.name) / "tiny.txt")
+    write_tiny_corpus(
+        Path(tmp.name) / "tiny.txt",
+        TINY_LABELED_CORPUS_TEXT if labeled else TINY_CORPUS_TEXT,
+    )
     return tmp
 
 
