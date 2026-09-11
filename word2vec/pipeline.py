@@ -13,6 +13,8 @@ from word2vec.dataset import (
     SkipGramDataset,
     make_negative_collate,
     normalized_feature_frequency,
+    pad_fasttext_collate,
+    word_ngrams,
 )
 from word2vec.negative_sampling import NegativeSampler
 from word2vec.skipgram import SkipGramPairBuilder
@@ -61,8 +63,11 @@ class ProcessedCorpus:
             documents = documents[: self.config.max_examples]
         feature_rows: list[np.ndarray] = []
         weight_rows: list[np.ndarray] = []
+        ngram_rows: list[np.ndarray] = []
+        token_counts: list[int] = []
         label_ids: list[int] = []
         kept_total = 0
+        ngram_size = self.config.ngram_size
         for sentence, label in documents:
             if label is None:
                 raise RuntimeError("FastText examples need a class label on every document.")
@@ -70,19 +75,18 @@ class ProcessedCorpus:
             features, weights = normalized_feature_frequency(sentence)
             feature_rows.append(features)
             weight_rows.append(weights)
+            ngram_rows.append(word_ngrams(sentence, ngram_size))
+            token_counts.append(len(sentence))
             label_ids.append(self.label_to_id[label])
         if not feature_rows:
             raise ValueError("No labeled documents left after vocabulary filtering.")
         self.kept_token_count = kept_total
-        width = max(row.shape[0] for row in feature_rows)
-        features = np.full((len(feature_rows), width), -1, dtype=np.int64)
-        weights = np.zeros((len(weight_rows), width), dtype=np.float32)
-        for index, (feature_row, weight_row) in enumerate(zip(feature_rows, weight_rows)):
-            length = feature_row.shape[0]
-            features[index, :length] = feature_row
-            weights[index, :length] = weight_row
         self.dataset = FastTextDataset(
-            features, weights, np.asarray(label_ids, dtype=np.int64)
+            feature_rows,
+            weight_rows,
+            ngram_rows,
+            token_counts,
+            label_ids,
         )
         return self.dataset
 
@@ -122,7 +126,9 @@ class ProcessedCorpus:
     ) -> DataLoader:
         dataset = self.rebuild_examples(epoch)
         collate_fn = None
-        if self.config.architecture != "fasttext" and with_negatives:
+        if self.config.architecture == "fasttext":
+            collate_fn = pad_fasttext_collate
+        elif with_negatives:
             if self.negative_sampler is None:
                 raise RuntimeError(
                     "Negative sampling collate requested, but no noise table was built. "

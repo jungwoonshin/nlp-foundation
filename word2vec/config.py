@@ -19,6 +19,7 @@ class ProcessingConfig:
     max_sentence_length: int = 1000
     max_sentences: int | None = None
     max_examples: int | None = None
+    ngram_size: int = 2
 
     def validate(self) -> None:
         if self.min_count < 1:
@@ -41,6 +42,8 @@ class ProcessingConfig:
             raise ValueError("max_sentences must be >= 1")
         if self.max_examples is not None and self.max_examples < 1:
             raise ValueError("max_examples must be >= 1")
+        if self.ngram_size < 2:
+            raise ValueError("ngram_size must be >= 2")
 
 
 def resolve_corpus_path(path: str | Path) -> Path:

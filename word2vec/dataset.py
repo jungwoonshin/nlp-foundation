@@ -56,22 +56,45 @@ def normalized_feature_frequency(token_ids: Sequence[int]) -> tuple[np.ndarray, 
     return features, weights
 
 
+def word_ngrams(token_ids: Sequence[int], ngram_size: int) -> np.ndarray:
+    """Consecutive word-id n-grams with shape `(num_ngrams, ngram_size)`."""
+    if ngram_size < 2:
+        raise ValueError("ngram_size must be >= 2")
+    ids = np.asarray(token_ids, dtype=np.int64)
+    if ids.ndim != 1:
+        raise ValueError("token_ids must be 1-D")
+    if ids.shape[0] < ngram_size:
+        return np.empty((0, ngram_size), dtype=np.int64)
+    return np.ascontiguousarray(np.lib.stride_tricks.sliding_window_view(ids, ngram_size))
+
+
 class FastTextDataset(Dataset):
-    """One classified document: normalized feature frequencies -> label id."""
+    """Unpadded classified documents. Batch collate pads to the widest example."""
 
     def __init__(
         self,
-        features: np.ndarray,
-        weights: np.ndarray,
-        labels: np.ndarray,
+        features: Sequence[np.ndarray],
+        weights: Sequence[np.ndarray],
+        ngrams: Sequence[np.ndarray],
+        token_counts: Sequence[int],
+        labels: Sequence[int],
     ) -> None:
-        if features.ndim != 2 or weights.ndim != 2 or labels.ndim != 1:
-            raise ValueError("features and weights must be 2-D and labels 1-D")
-        if features.shape != weights.shape or features.shape[0] != labels.shape[0]:
-            raise ValueError("features, weights, and labels must align")
-        self.features = torch.as_tensor(features, dtype=torch.long)
-        self.weights = torch.as_tensor(weights, dtype=torch.float32)
+        if not (len(features) == len(weights) == len(ngrams) == len(token_counts) == len(labels)):
+            raise ValueError("features, weights, ngrams, token_counts, and labels must align")
+        if not features:
+            raise ValueError("Need at least one FastText example")
+        self.features = [torch.as_tensor(row, dtype=torch.long) for row in features]
+        self.weights = [torch.as_tensor(row, dtype=torch.float32) for row in weights]
+        self.ngrams = [torch.as_tensor(np.array(row, copy=True), dtype=torch.long) for row in ngrams]
+        self.token_counts = torch.as_tensor(token_counts, dtype=torch.long)
         self.labels = torch.as_tensor(labels, dtype=torch.long)
+        for feature_row, weight_row, ngram_row in zip(self.features, self.weights, self.ngrams):
+            if feature_row.ndim != 1 or weight_row.ndim != 1:
+                raise ValueError("each document's features and weights must be 1-D")
+            if feature_row.shape != weight_row.shape:
+                raise ValueError("features and weights must have the same length")
+            if ngram_row.ndim != 2:
+                raise ValueError("each document's ngrams must be 2-D (num_ngrams, ngram_size)")
 
     def __len__(self) -> int:
         return int(self.labels.shape[0])
@@ -80,8 +103,37 @@ class FastTextDataset(Dataset):
         return {
             "features": self.features[index],
             "weights": self.weights[index],
+            "ngrams": self.ngrams[index],
+            "token_count": self.token_counts[index],
             "label": self.labels[index],
         }
+
+
+def pad_fasttext_collate(
+    batch: list[dict[str, torch.Tensor]],
+) -> dict[str, torch.Tensor]:
+    """Pad features and n-grams to the widest example in this batch only."""
+    max_features = max(item["features"].shape[0] for item in batch)
+    ngram_size = int(batch[0]["ngrams"].shape[1])
+    max_ngrams = max(item["ngrams"].shape[0] for item in batch)
+    batch_size = len(batch)
+    features = torch.full((batch_size, max_features), -1, dtype=torch.long)
+    weights = torch.zeros((batch_size, max_features), dtype=torch.float32)
+    ngrams = torch.full((batch_size, max_ngrams, ngram_size), -1, dtype=torch.long)
+    for index, item in enumerate(batch):
+        feature_width = int(item["features"].shape[0])
+        features[index, :feature_width] = item["features"]
+        weights[index, :feature_width] = item["weights"]
+        gram_count = int(item["ngrams"].shape[0])
+        if gram_count:
+            ngrams[index, :gram_count] = item["ngrams"]
+    return {
+        "features": features,
+        "weights": weights,
+        "ngrams": ngrams,
+        "token_count": torch.stack([item["token_count"] for item in batch]),
+        "label": torch.stack([item["label"] for item in batch]),
+    }
 
 
 def make_negative_collate(
