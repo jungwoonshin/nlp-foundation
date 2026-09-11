@@ -44,6 +44,7 @@ def fasttext(*, smoke: bool = False) -> None:
             embedding_dim=EMBEDDING_DIM,
             vocab=processed.vocab,
             num_classes=len(processed.label_to_id),
+            num_buckets=64 if smoke else 10_000_000,
         ).to(chosen)
         fit(
             model,

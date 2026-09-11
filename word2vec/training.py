@@ -38,6 +38,7 @@ def process(
     max_sentences: int | None = None,
     max_examples: int | None = None,
     negative_table_size: int = 1_000_000,
+    ngram_size: int = 2,
 ) -> ProcessedCorpus:
     """Load `path` and return a PyTorch Dataset of skip-gram or CBOW examples."""
 
@@ -53,6 +54,7 @@ def process(
         max_sentences=max_sentences,
         max_examples=max_examples,
         negative_table_size=negative_table_size,
+        ngram_size=ngram_size,
     )
     return process_corpus(path, config)
 
@@ -156,6 +158,8 @@ def classification_loss(
     return model(
         batch["features"].to(chosen_device),
         batch["weights"].to(chosen_device),
+        batch["ngrams"].to(chosen_device),
+        batch["token_count"].to(chosen_device),
         batch["label"].to(chosen_device),
     )
 
