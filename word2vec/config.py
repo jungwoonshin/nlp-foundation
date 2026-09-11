@@ -33,8 +33,8 @@ class ProcessingConfig:
             raise ValueError("unigram_power must be > 0")
         if self.negative_table_size < 1:
             raise ValueError("negative_table_size must be >= 1")
-        if self.architecture not in {"skipgram", "cbow"}:
-            raise ValueError("architecture must be 'skipgram' or 'cbow'")
+        if self.architecture not in {"skipgram", "cbow", "fasttext"}:
+            raise ValueError("architecture must be 'skipgram', 'cbow', or 'fasttext'")
         if self.max_sentence_length < 2:
             raise ValueError("max_sentence_length must be >= 2")
         if self.max_sentences is not None and self.max_sentences < 1:

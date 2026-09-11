@@ -18,3 +18,17 @@ def lookup_mean(embedding: nn.Embedding, token_ids: torch.Tensor) -> torch.Tenso
     weights = present.unsqueeze(-1).to(dtype=vectors.dtype)
     counted = weights.sum(dim=1).clamp(min=1.0)
     return (vectors * weights).sum(dim=1) / counted
+
+
+def lookup_weighted(
+    embedding: nn.Embedding,
+    token_ids: torch.Tensor,
+    feature_weights: torch.Tensor,
+) -> torch.Tensor:
+    """Weighted bag: `sum(embed(id) * freq)` for ids >= 0. Weights should sum to 1."""
+    if token_ids.ndim != 2 or feature_weights.shape != token_ids.shape:
+        raise ValueError("token_ids and feature_weights must be 2-D with the same shape")
+    present = token_ids >= 0
+    vectors = embedding(token_ids.clamp(min=0))
+    weights = feature_weights.to(dtype=vectors.dtype) * present.to(dtype=vectors.dtype)
+    return (vectors * weights.unsqueeze(-1)).sum(dim=1)

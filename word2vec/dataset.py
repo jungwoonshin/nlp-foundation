@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections import Counter
+from collections.abc import Callable, Sequence
 
 import numpy as np
 import torch
@@ -37,6 +38,49 @@ class SkipGramDataset(Dataset):
         return {
             "center": self.centers[index],
             "context": self.contexts[index],
+        }
+
+
+def normalized_feature_frequency(token_ids: Sequence[int]) -> tuple[np.ndarray, np.ndarray]:
+    """Unique feature ids and counts / document length (sum of weights is 1)."""
+    if not token_ids:
+        raise ValueError("Need at least one token to form FastText features.")
+    counts = Counter(int(token_id) for token_id in token_ids)
+    total = float(sum(counts.values()))
+    features = np.fromiter(counts, dtype=np.int64, count=len(counts))
+    weights = np.fromiter(
+        (counts[int(feature)] / total for feature in features),
+        dtype=np.float32,
+        count=len(counts),
+    )
+    return features, weights
+
+
+class FastTextDataset(Dataset):
+    """One classified document: normalized feature frequencies -> label id."""
+
+    def __init__(
+        self,
+        features: np.ndarray,
+        weights: np.ndarray,
+        labels: np.ndarray,
+    ) -> None:
+        if features.ndim != 2 or weights.ndim != 2 or labels.ndim != 1:
+            raise ValueError("features and weights must be 2-D and labels 1-D")
+        if features.shape != weights.shape or features.shape[0] != labels.shape[0]:
+            raise ValueError("features, weights, and labels must align")
+        self.features = torch.as_tensor(features, dtype=torch.long)
+        self.weights = torch.as_tensor(weights, dtype=torch.float32)
+        self.labels = torch.as_tensor(labels, dtype=torch.long)
+
+    def __len__(self) -> int:
+        return int(self.labels.shape[0])
+
+    def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
+        return {
+            "features": self.features[index],
+            "weights": self.weights[index],
+            "label": self.labels[index],
         }
 
 

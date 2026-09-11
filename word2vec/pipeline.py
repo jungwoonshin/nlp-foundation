@@ -8,7 +8,12 @@ from torch.utils.data import DataLoader
 
 from word2vec.config import ProcessingConfig, resolve_corpus_path
 from word2vec.corpus import WhitespaceCorpus
-from word2vec.dataset import SkipGramDataset, make_negative_collate
+from word2vec.dataset import (
+    FastTextDataset,
+    SkipGramDataset,
+    make_negative_collate,
+    normalized_feature_frequency,
+)
 from word2vec.negative_sampling import NegativeSampler
 from word2vec.skipgram import SkipGramPairBuilder
 from word2vec.subsample import FrequentWordSubsampler
@@ -36,11 +41,52 @@ class ProcessedCorpus:
     subsampler: FrequentWordSubsampler
     config: ProcessingConfig
     raw_token_count: int
+    labels: list[str | None] | None = None
+    label_to_id: dict[str, int] | None = None
     negative_sampler: NegativeSampler | None = None
     kept_token_count: int = 0
-    dataset: SkipGramDataset | None = None
+    dataset: SkipGramDataset | FastTextDataset | None = None
 
-    def rebuild_examples(self, epoch: int) -> SkipGramDataset:
+    def rebuild_examples(self, epoch: int) -> SkipGramDataset | FastTextDataset:
+        if self.config.architecture == "fasttext":
+            return self._rebuild_fasttext()
+        return self._rebuild_windows(epoch)
+
+    def _rebuild_fasttext(self) -> FastTextDataset:
+        """One document: unique tokens with count/length weights, label as target."""
+        if self.labels is None or self.label_to_id is None:
+            raise RuntimeError("FastText examples need a class label on every document.")
+        documents = list(zip(self.sentences, self.labels, strict=True))
+        if self.config.max_examples is not None:
+            documents = documents[: self.config.max_examples]
+        feature_rows: list[np.ndarray] = []
+        weight_rows: list[np.ndarray] = []
+        label_ids: list[int] = []
+        kept_total = 0
+        for sentence, label in documents:
+            if label is None:
+                raise RuntimeError("FastText examples need a class label on every document.")
+            kept_total += len(sentence)
+            features, weights = normalized_feature_frequency(sentence)
+            feature_rows.append(features)
+            weight_rows.append(weights)
+            label_ids.append(self.label_to_id[label])
+        if not feature_rows:
+            raise ValueError("No labeled documents left after vocabulary filtering.")
+        self.kept_token_count = kept_total
+        width = max(row.shape[0] for row in feature_rows)
+        features = np.full((len(feature_rows), width), -1, dtype=np.int64)
+        weights = np.zeros((len(weight_rows), width), dtype=np.float32)
+        for index, (feature_row, weight_row) in enumerate(zip(feature_rows, weight_rows)):
+            length = feature_row.shape[0]
+            features[index, :length] = feature_row
+            weights[index, :length] = weight_row
+        self.dataset = FastTextDataset(
+            features, weights, np.asarray(label_ids, dtype=np.int64)
+        )
+        return self.dataset
+
+    def _rebuild_windows(self, epoch: int) -> SkipGramDataset:
         """Subsample each sentence, cut at max_sentence_length, then build windows."""
         rng = np.random.default_rng(self.config.seed + 1_000_003 * epoch)
         builder = SkipGramPairBuilder(self.config.window_size, rng)
@@ -76,7 +122,7 @@ class ProcessedCorpus:
     ) -> DataLoader:
         dataset = self.rebuild_examples(epoch)
         collate_fn = None
-        if with_negatives:
+        if self.config.architecture != "fasttext" and with_negatives:
             if self.negative_sampler is None:
                 raise RuntimeError(
                     "Negative sampling collate requested, but no noise table was built. "
@@ -91,22 +137,34 @@ class ProcessedCorpus:
             collate_fn=collate_fn,
         )
 
-
 def process_corpus(path: str | Path, config: ProcessingConfig | None = None) -> ProcessedCorpus:
     config = config or ProcessingConfig()
     config.validate()
     corpus_path = resolve_corpus_path(path)
     rng = np.random.default_rng(config.seed)
 
-    raw_sentences = WhitespaceCorpus(
+    raw_documents = WhitespaceCorpus(
         corpus_path, max_sentences=config.max_sentences
-    ).sentences()
+    ).documents()
     vocab = Vocab.build(
-        [token for sentence in raw_sentences for token in sentence],
+        [token for document in raw_documents for token in document.tokens],
         min_count=config.min_count,
         huffman=config.build_huffman,
     )
-    sentences = [ids for sentence in raw_sentences if (ids := vocab.encode(sentence))]
+    sentences: list[list[int]] = []
+    labels: list[str | None] = []
+    for document in raw_documents:
+        ids = vocab.encode(document.tokens)
+        if not ids:
+            continue
+        sentences.append(ids)
+        labels.append(document.label)
+    if config.architecture == "fasttext" and (not labels or any(label is None for label in labels)):
+        raise ValueError("FastText classification requires a class label on every document.")
+    label_to_id = None
+    if labels and all(label is not None for label in labels):
+        unique = sorted({label for label in labels if label is not None})
+        label_to_id = {label: index for index, label in enumerate(unique)}
     negatives = None
     if config.build_negative_sampler:
         negatives = NegativeSampler(
@@ -121,6 +179,8 @@ def process_corpus(path: str | Path, config: ProcessingConfig | None = None) -> 
         sentences=sentences,
         subsampler=FrequentWordSubsampler(vocab, config.subsample_threshold),
         config=config,
-        raw_token_count=sum(len(sentence) for sentence in raw_sentences),
+        raw_token_count=sum(len(document.tokens) for document in raw_documents),
+        labels=labels,
+        label_to_id=label_to_id,
         negative_sampler=negatives,
     )
