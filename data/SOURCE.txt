@@ -21,7 +21,13 @@ line per article to data/ag_news.txt (`__label__<1-4> tokens...`).
 Newlines separate documents; the leading `__label__` token is the class
 (1 World, 2 Sports, 3 Business, 4 Sci/Tech) and is not part of the vocab.
 
-The zip and full text8 live in data/raw/ (gitignored). To restore them:
+The zip, full text8, and questions-words.txt live in data/raw/ (gitignored).
+To restore them:
+
+  python prepare_text8.py
+
+or:
 
   curl -L -o data/raw/text8.zip http://mattmahoney.net/dc/text8.zip
-  tar -xf data/raw/text8.zip -C data/raw
+  python -c "import zipfile; zipfile.ZipFile('data/raw/text8.zip').extractall('data/raw')"
+  curl -L -o data/raw/questions-words.txt https://raw.githubusercontent.com/tmikolov/word2vec/master/questions-words.txt
