@@ -88,13 +88,21 @@ def fit(
     epochs: int | None = None,
     batch_size: int | None = None,
     learning_rate: float | None = None,
+    optimizer_name: str = "adam",
+    min_learning_rate: float = 0.0,
 ) -> None:
     epochs = EPOCHS if epochs is None else epochs
     batch_size = BATCH_SIZE if batch_size is None else batch_size
     learning_rate = LEARNING_RATE if learning_rate is None else learning_rate
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    if optimizer_name == "adam":
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    elif optimizer_name == "sgd":
+        optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+    else:
+        raise ValueError("optimizer_name must be 'adam' or 'sgd'")
     model.train()
     for epoch in range(1, epochs + 1):
+        print(f"epoch {epoch:3d}  building windows...")
         loader = processed.dataloader(
             batch_size,
             epoch=epoch,
@@ -103,7 +111,13 @@ def fit(
         )
         epoch_loss = 0.0
         epoch_pairs = 0
-        for batch in loader:
+        n_batches = max(len(loader), 1)
+        for batch_index, batch in enumerate(loader):
+            if optimizer_name == "sgd":
+                progress = ((epoch - 1) + batch_index / n_batches) / epochs
+                decayed = max(learning_rate * (1.0 - progress), min_learning_rate)
+                for group in optimizer.param_groups:
+                    group["lr"] = decayed
             loss = batch_loss(model, batch, chosen_device)
             optimizer.zero_grad()
             loss.backward()
@@ -111,9 +125,11 @@ def fit(
             batch_pairs = int(batch["label" if "label" in batch else "center"].shape[0])
             epoch_loss += float(loss) * batch_pairs
             epoch_pairs += batch_pairs
+        current_lr = optimizer.param_groups[0]["lr"]
         print(
             f"epoch {epoch:3d}  kept={processed.kept_token_count:,}  "
-            f"examples={epoch_pairs:,}  loss={epoch_loss / max(epoch_pairs, 1):.4f}"
+            f"examples={epoch_pairs:,}  loss={epoch_loss / max(epoch_pairs, 1):.4f}  "
+            f"lr={current_lr:.5f}"
         )
 
 

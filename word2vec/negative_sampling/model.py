@@ -58,6 +58,12 @@ class NegativeSampling(nn.Module):
         self.context_embedding = nn.Embedding(vocab_size, embedding_dim)
         self.center_embeddings = nn.Embedding(vocab_size, embedding_dim)
 
+    def init_like_word2vec(self) -> None:
+        """Match official C init: syn0 uniform in [-0.5/d, 0.5/d], syn1neg zeros."""
+        dim = self.center_embeddings.embedding_dim
+        nn.init.uniform_(self.center_embeddings.weight, -0.5 / dim, 0.5 / dim)
+        nn.init.zeros_(self.context_embedding.weight)
+
     def forward(
         self,
         center_index: torch.Tensor,

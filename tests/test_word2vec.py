@@ -77,6 +77,14 @@ class NegativeSamplingShapeTests(unittest.TestCase):
         self.assertIsNotNone(model.center_embeddings.weight.grad)
         self.assertIsNotNone(model.context_embedding.weight.grad)
 
+    def test_init_like_word2vec_zeros_output_and_bounds_input(self) -> None:
+        dim, vocab_size = 8, 6
+        model = NegativeSampling(embedding_dim=dim, vocab_size=vocab_size)
+        model.init_like_word2vec()
+        bound = 0.5 / dim
+        self.assertTrue(torch.all(model.center_embeddings.weight.abs() <= bound + 1e-6))
+        self.assertTrue(torch.all(model.context_embedding.weight == 0))
+
     def test_hierarchical_softmax_batch_shapes(self) -> None:
         coding = HuffmanCoding.from_counts([20, 10, 5, 2])
         model = HierarchicalSoftmax(coding, embedding_dim=6, vocab_size=4)
