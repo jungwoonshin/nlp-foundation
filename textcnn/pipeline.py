@@ -87,3 +87,37 @@ def process_sentences(path: str | Path, config: TextCNNConfig | None = None) -> 
         label_to_id=label_to_id,
         config=config,
     )
+
+
+def encode_sentences(path: str | Path, processed: ProcessedSentences) -> ProcessedSentences:
+    """Encode another labeled file with an existing train vocab and label map."""
+    config = processed.config
+    corpus_path = Path(path)
+    if not corpus_path.is_file():
+        raise FileNotFoundError(f"Corpus not found: {corpus_path}")
+
+    raw_documents = WhitespaceCorpus(corpus_path).documents()
+    if not raw_documents or any(document.label is None for document in raw_documents):
+        raise ValueError("TextCNN classification requires a class label on every document.")
+
+    sequences: list[list[int]] = []
+    labels: list[int] = []
+    for document in raw_documents:
+        assert document.label is not None
+        if document.label not in processed.label_to_id:
+            continue
+        ids = [token_id + WORD_ID_OFFSET for token_id in processed.vocab.encode(document.tokens)]
+        ids = ids[: config.max_length]
+        if not ids:
+            ids = [PAD_ID]
+        sequences.append(ids)
+        labels.append(processed.label_to_id[document.label])
+    if not sequences:
+        raise ValueError("No labeled documents left after vocabulary filtering.")
+
+    return ProcessedSentences(
+        vocab=processed.vocab,
+        dataset=SentenceDataset(sequences, labels),
+        label_to_id=processed.label_to_id,
+        config=config,
+    )
