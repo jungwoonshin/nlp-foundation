@@ -81,8 +81,13 @@ class Subwordifier(torch.nn.Module):
         self.minn = minn
         self.maxn = maxn
         self.words = tuple(words) if words is not None else None
-        self.word_to_bucket_ids_dict = self.precompute_bucket_hashes() if self.words is not None else None
         self.device = device
+        if self.words is not None:
+            if len(self.words) != vocab_size:
+                raise ValueError("len(words) must equal vocab_size")
+            self._register_bucket_table()
+        else:
+            self.register_buffer("bucket_table", torch.empty(0, 0, dtype=torch.long), persistent=False)
 
     def hash_ngram(self, ngram: str) -> int:
         return fasttext_hash(ngram) % self.num_buckets
@@ -94,39 +99,40 @@ class Subwordifier(torch.nn.Module):
     def precompute_bucket_hashes(self) -> dict[int, list[int]]:
         if self.words is None:
             raise ValueError("id_to_word strings are required to precompute n-gram hashes")
-        if len(self.words) != self.vocab_size:
-            raise ValueError("len(words) must equal vocab_size")
         return {i: self.hash_word(word) for i, word in enumerate(self.words)}
 
-    # Inefficient implementation: not vectorized
+    def _register_bucket_table(self) -> None:
+        """Padded `(V, max_n)` bucket ids; `-1` is a masked position."""
+        rows = [self.hash_word(word) for word in self.words or ()]
+        max_n = max((len(row) for row in rows), default=0)
+        table = torch.full((self.vocab_size, max_n), -1, dtype=torch.long)
+        for index, row in enumerate(rows):
+            if row:
+                table[index, : len(row)] = torch.tensor(row, dtype=torch.long)
+        self.register_buffer("bucket_table", table, persistent=False)
+
     def encode(self, center_index: torch.Tensor) -> torch.Tensor:
-        """Word vector plus sum of n-gram bucket vectors (FastText training input)."""
-        if self.word_to_bucket_ids_dict is None:
+        """Average of the word row and its hashed n-gram rows (FastText `computeHidden`)."""
+        if self.bucket_table.numel() == 0 and self.words is None:
             raise ValueError("encode requires words= at init so bucket ids can be precomputed")
         device = self.center_embeddings.weight.device
         if center_index.ndim > 1:
             raise ValueError("encode expects a 0-D or 1-D tensor of word ids (skip-gram), not a CBOW bag")
         squeezed = center_index.ndim == 0
-        ids = center_index.to(device).reshape(-1)
-
-        center_vectors = self.center_embeddings(ids)
-        ngram_sums = []
-        for word_id in ids.tolist():
-            bucket_ids = self.word_to_bucket_ids_dict[int(word_id)]
-            if not bucket_ids:
-                ngram_sums.append(
-                    torch.zeros(self.embedding_dim, device=device, dtype=center_vectors.dtype)
-                )
-                continue
-            buckets = torch.tensor(bucket_ids, dtype=torch.long, device=device)
-            ngram_sums.append(self.subword_embeddings(buckets).sum(dim=0))
-        out = center_vectors + torch.stack(ngram_sums, dim=0)
-        # 0-D id → (dim,); 1-D ids → (batch, dim)
+        ids = center_index.to(device=device, dtype=torch.long).reshape(-1)
+        word_vectors = self.center_embeddings(ids)
+        if self.bucket_table.ndim != 2 or self.bucket_table.shape[1] == 0:
+            return word_vectors.squeeze(0) if squeezed else word_vectors
+        buckets = self.bucket_table[ids]
+        present = buckets >= 0
+        ngram_vectors = self.subword_embeddings(buckets.clamp(min=0))
+        ngram_sum = (ngram_vectors * present.unsqueeze(-1).to(dtype=ngram_vectors.dtype)).sum(dim=1)
+        denom = present.sum(dim=1, keepdim=True).to(dtype=word_vectors.dtype) + 1.0
+        out = (word_vectors + ngram_sum) / denom
         return out.squeeze(0) if squeezed else out
 
-    # TO DO: Vectorized implementation
     def encode_vectorized(self, center_index: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError("padded batched encode is not implemented yet")
+        return self.encode(center_index)
 
 
 class SubwordNegativeSampling(nn.Module):
@@ -137,18 +143,53 @@ class SubwordNegativeSampling(nn.Module):
         embedding_dim: int,
         vocab: Vocab,
         num_buckets: int = 2_000_000,
+        minn: int = 3,
+        maxn: int = 6,
     ) -> None:
         super().__init__()
         vocab_size = len(vocab)
+        self.word_to_id = vocab.word_to_id
         self.context_embedding = nn.Embedding(vocab_size, embedding_dim)
         self.subwordifier = Subwordifier(
             embedding_dim=embedding_dim,
             vocab_size=vocab_size,
             num_buckets=num_buckets,
             words=vocab.id_to_word,
-            minn=3,
-            maxn=6,
+            minn=minn,
+            maxn=maxn,
         )
+        self.init_like_fasttext()
+
+    def init_like_fasttext(self) -> None:
+        """Match official FastText: input uniform ±1/dim, output zeros."""
+        dim = self.subwordifier.embedding_dim
+        bound = 1.0 / dim
+        nn.init.uniform_(self.subwordifier.center_embeddings.weight, -bound, bound)
+        nn.init.uniform_(self.subwordifier.subword_embeddings.weight, -bound, bound)
+        nn.init.zeros_(self.context_embedding.weight)
+
+    @torch.no_grad()
+    def compose(self, word: str) -> torch.Tensor:
+        """SISG vector: mean of the word row (if in-vocab) and character n-grams."""
+        sub = self.subwordifier
+        index = self.word_to_id.get(word)
+        if index is None:
+            index = self.word_to_id.get(word.lower())
+            word = word.lower()
+        gram_ids = sub.hash_word(sub.words[index] if index is not None else word)
+        parts: list[torch.Tensor] = []
+        count = 0
+        if index is not None:
+            parts.append(sub.center_embeddings.weight[index])
+            count += 1
+        if gram_ids:
+            buckets = torch.tensor(gram_ids, dtype=torch.long, device=sub.subword_embeddings.weight.device)
+            parts.append(sub.subword_embeddings(buckets).sum(dim=0))
+            count += len(gram_ids)
+        if not parts:
+            return torch.zeros(sub.embedding_dim, device=sub.center_embeddings.weight.device)
+        stacked = parts[0] if len(parts) == 1 else parts[0] + parts[1]
+        return stacked / max(count, 1)
 
     def forward(
         self,
