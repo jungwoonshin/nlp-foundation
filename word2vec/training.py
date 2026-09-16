@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 
 import torch
 from torch import nn
@@ -90,6 +91,8 @@ def fit(
     learning_rate: float | None = None,
     optimizer_name: str = "adam",
     min_learning_rate: float = 0.0,
+    log_every: int | None = None,
+    after_epoch: Callable[..., Any] | None = None,
 ) -> None:
     epochs = EPOCHS if epochs is None else epochs
     batch_size = BATCH_SIZE if batch_size is None else batch_size
@@ -125,12 +128,22 @@ def fit(
             batch_pairs = int(batch["label" if "label" in batch else "center"].shape[0])
             epoch_loss += float(loss) * batch_pairs
             epoch_pairs += batch_pairs
+            if log_every is not None and (batch_index + 1) % log_every == 0:
+                current_lr = optimizer.param_groups[0]["lr"]
+                print(
+                    f"  batch {batch_index + 1}/{n_batches}  "
+                    f"loss={float(loss) / max(batch_pairs, 1):.4f}  "
+                    f"lr={current_lr:.5f}"
+                )
         current_lr = optimizer.param_groups[0]["lr"]
+        mean_loss = epoch_loss / max(epoch_pairs, 1)
         print(
             f"epoch {epoch:3d}  kept={processed.kept_token_count:,}  "
-            f"examples={epoch_pairs:,}  loss={epoch_loss / max(epoch_pairs, 1):.4f}  "
+            f"examples={epoch_pairs:,}  loss={mean_loss:.4f}  "
             f"lr={current_lr:.5f}"
         )
+        if after_epoch is not None:
+            after_epoch(epoch, model, mean_loss)
 
 
 def input_and_target(
