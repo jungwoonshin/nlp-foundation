@@ -37,6 +37,36 @@ def log_corpus(processed: ProcessedSentences, path: Path | None = None) -> None:
     print(f"filter_sizes: {processed.config.filter_sizes}")
 
 
+@torch.no_grad()
+def evaluate(
+    model: nn.Module,
+    processed: ProcessedSentences,
+    chosen_device: torch.device,
+    *,
+    batch_size: int | None = None,
+) -> float:
+    """Accuracy on a labeled split. Model is left in eval mode."""
+    batch_size = BATCH_SIZE if batch_size is None else batch_size
+    model.eval()
+    correct = 0
+    total = 0
+    for batch in processed.dataloader(batch_size, shuffle=False):
+        tokens = batch["tokens"].to(chosen_device)
+        labels = batch["label"].to(chosen_device)
+        pred = model(tokens).argmax(dim=1)
+        correct += int((pred == labels).sum().item())
+        total += int(labels.shape[0])
+    return correct / max(total, 1)
+
+
+def constrain_l2_rows(weight: torch.Tensor, max_norm: float) -> None:
+    """Kim (2014): rescale each row of a 2-D weight if its L2 norm exceeds s."""
+    with torch.no_grad():
+        norms = weight.norm(p=2, dim=1, keepdim=True)
+        scale = norms.clamp(max=max_norm) / (1e-7 + norms)
+        weight.mul_(scale)
+
+
 def fit(
     model: nn.Module,
     processed: ProcessedSentences,
@@ -45,13 +75,32 @@ def fit(
     epochs: int | None = None,
     batch_size: int | None = None,
     learning_rate: float | None = None,
-) -> None:
+    optimizer_name: str = "adam",
+    eval_processed: ProcessedSentences | None = None,
+    val_processed: ProcessedSentences | None = None,
+    max_norm: float | None = None,
+) -> dict[str, float]:
     epochs = EPOCHS if epochs is None else epochs
     batch_size = BATCH_SIZE if batch_size is None else batch_size
     learning_rate = LEARNING_RATE if learning_rate is None else learning_rate
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    model.train()
+    name = optimizer_name.lower()
+    if name == "adadelta":
+        rho = 0.95
+        optimizer = torch.optim.Adadelta(
+            model.parameters(), lr=learning_rate, rho=rho, eps=1e-6
+        )
+    elif name == "adam":
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    else:
+        raise ValueError(f"unknown optimizer: {optimizer_name}")
+
+    best_val = -1.0
+    best_test = 0.0
+    last_test = 0.0
+    last_val = 0.0
+    last_loss = 0.0
     for epoch in range(1, epochs + 1):
+        model.train()
         loader = processed.dataloader(batch_size, shuffle=True)
         epoch_loss = 0.0
         epoch_docs = 0
@@ -63,13 +112,38 @@ def fit(
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            if max_norm is not None and hasattr(model, "fc"):
+                constrain_l2_rows(model.fc.weight, max_norm)
             n = int(labels.shape[0])
             epoch_loss += float(loss) * n
             epoch_docs += n
-        print(
-            f"epoch {epoch:3d}  documents={epoch_docs:,}  "
-            f"loss={epoch_loss / max(epoch_docs, 1):.4f}"
-        )
+        last_loss = epoch_loss / max(epoch_docs, 1)
+        parts = [
+            f"epoch {epoch:3d}  documents={epoch_docs:,}  ",
+            f"loss={last_loss:.4f}",
+        ]
+        if val_processed is not None:
+            last_val = evaluate(
+                model, val_processed, chosen_device, batch_size=batch_size
+            )
+            parts.append(f"  val_acc={last_val:.4f}")
+        if eval_processed is not None:
+            last_test = evaluate(
+                model, eval_processed, chosen_device, batch_size=batch_size
+            )
+            parts.append(f"  test_acc={last_test:.4f}")
+            if val_processed is None or last_val >= best_val:
+                if val_processed is not None:
+                    best_val = last_val
+                best_test = last_test
+        print("".join(parts))
+    return {
+        "loss": last_loss,
+        "val_acc": last_val,
+        "test_acc": last_test,
+        "best_test_acc": best_test if eval_processed is not None else last_test,
+        "best_val_acc": best_val if val_processed is not None else last_val,
+    }
 
 
 def write_tiny_corpus(path: Path, text: str = TINY_LABELED_CORPUS_TEXT) -> Path:
