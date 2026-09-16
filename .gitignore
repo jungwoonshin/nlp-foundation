@@ -1,5 +1,7 @@
 data/raw/
 data/ag_news.txt
+data/trec_train.txt
+data/trec_test.txt
 __pycache__/
 *.pyc
 
