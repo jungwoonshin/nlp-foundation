@@ -23,6 +23,10 @@ class TextCNN(nn.Module):
         # This is not what we want because we want to ignore the padding tokens when calculating the loss.
         # So we set the padding tokens to 0.
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=padding_idx)
+        # Kim CNN-rand: U[-0.25, 0.25] so random vectors match word2vec-scale variance.
+        nn.init.uniform_(self.embedding.weight, -0.25, 0.25)
+        with torch.no_grad():
+            self.embedding.weight[padding_idx].zero_()
         self.convs = nn.ModuleList([
             nn.Conv2d(1, num_filters, (size, embedding_dim)) for size in filter_sizes
         ])
@@ -32,8 +36,9 @@ class TextCNN(nn.Module):
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:
         # tokens: (batch, seq_len) long, pad = padding_idx
         # return: logits (batch, num_classes)
-        embedded = self.dropout(self.embedding(tokens)) # (batch, seq_len, embedding_dim)
-        embedded = embedded.unsqueeze(1) # (batch, 1, seq_len, embedding_dim)
+        # Dropout is only on the penultimate layer (Kim 2014 §2.1), not embeddings.
+        embedded = self.embedding(tokens)  # (batch, seq_len, embedding_dim)
+        embedded = embedded.unsqueeze(1)  # (batch, 1, seq_len, embedding_dim)
 
         # After conv2d operation, we have a 4D tensor (batch, num_filters, seq_len - filter_size + 1, 1).
         # Last embedding dimension is 1 because filter's width is embedding_dim and filter's height is filter_size.
