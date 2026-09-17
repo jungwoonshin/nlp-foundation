@@ -5,7 +5,6 @@ from torch import nn
 from torch.nn import functional as F
 
 from word2vec.embed import lookup_weighted
-from word2vec.fasttext.hashing import hash_word_ngram
 from word2vec.vocab import Vocab
 
 
@@ -28,29 +27,19 @@ class BOW_FastText(nn.Module):
         self.vocab_size = len(vocab)
         self.num_buckets = num_buckets
         # Official input_: rows [0, V) are words, [V, V + buckets) are n-grams.
-        self.input_embedding = nn.Embedding(self.vocab_size + num_buckets, embedding_dim)
-        self.classifier = nn.Linear(embedding_dim, num_classes)
-
-    def ngram_ids(self, ngrams: torch.Tensor) -> torch.Tensor:
-        """Map word-id n-grams to rows `V + (hash % buckets)` in the shared table."""
-        if ngrams.ndim != 3:
-            raise ValueError("ngrams must be 3-D (batch, num_ngrams, ngram_size)")
-        batch_size, num_ngrams, _ = ngrams.shape
-        ids = torch.full(
-            (batch_size, num_ngrams),
-            -1,
-            dtype=torch.long,
-            device=ngrams.device,
+        # sparse=True so SGD does not materialize a dense (V+buckets) gradient.
+        self.input_embedding = nn.Embedding(
+            self.vocab_size + num_buckets, embedding_dim, sparse=True
         )
-        words = self.id_to_word
-        offset = self.vocab_size
-        for row, gram_row in enumerate(ngrams.tolist()):
-            for col, gram in enumerate(gram_row):
-                tokens = [words[int(token_id)] for token_id in gram if int(token_id) >= 0]
-                if not tokens:
-                    continue
-                ids[row, col] = offset + hash_word_ngram(tokens) % self.num_buckets
-        return ids
+        self.classifier = nn.Linear(embedding_dim, num_classes, bias=False)
+        self.init_like_fasttext()
+
+    def init_like_fasttext(self) -> None:
+        """Match official FastText: input uniform ±1/dim, output zeros, no bias."""
+        dim = self.input_embedding.embedding_dim
+        bound = 1.0 / dim
+        nn.init.uniform_(self.input_embedding.weight, -bound, bound)
+        nn.init.zeros_(self.classifier.weight)
 
     def encode(
         self,
@@ -64,13 +53,13 @@ class BOW_FastText(nn.Module):
         word_sum = lookup_weighted(self.input_embedding, features, word_freq)
         word_count = word_freq.sum(dim=1, keepdim=True)
 
-        ngram_ids = self.ngram_ids(ngrams)
-        present_ngrams = ngram_ids >= 0
+        present_ngrams = ngrams >= 0
         ngram_freq = present_ngrams.to(dtype=word_sum.dtype)
-        ngram_sum = lookup_weighted(self.input_embedding, ngram_ids, ngram_freq)
+        ngram_sum = lookup_weighted(self.input_embedding, ngrams, ngram_freq)
         ngram_count = ngram_freq.sum(dim=1, keepdim=True)
 
-        return (word_sum + ngram_sum) / (word_count + ngram_count).clamp(min=1.0)
+        count = (word_count + ngram_count).clamp(min=1.0)
+        return (word_sum + ngram_sum) / count
 
     def forward(
         self,
