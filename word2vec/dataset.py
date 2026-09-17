@@ -95,8 +95,8 @@ class FastTextDataset(Dataset):
                 raise ValueError("each document's features and weights must be 1-D")
             if feature_row.shape != weight_row.shape:
                 raise ValueError("features and weights must have the same length")
-            if ngram_row.ndim != 2:
-                raise ValueError("each document's ngrams must be 2-D (num_ngrams, ngram_size)")
+            if ngram_row.ndim != 1:
+                raise ValueError("each document's ngrams must be 1-D hashed embedding ids")
 
     def __len__(self) -> int:
         return int(self.labels.shape[0])
@@ -115,12 +115,11 @@ def pad_fasttext_collate(
 ) -> dict[str, torch.Tensor]:
     """Pad features and n-grams to the widest example in this batch only."""
     max_features = max(item["features"].shape[0] for item in batch)
-    ngram_size = int(batch[0]["ngrams"].shape[1])
     max_ngrams = max(item["ngrams"].shape[0] for item in batch)
     batch_size = len(batch)
     features = torch.full((batch_size, max_features), -1, dtype=torch.long)
     weights = torch.zeros((batch_size, max_features), dtype=torch.float32)
-    ngrams = torch.full((batch_size, max_ngrams, ngram_size), -1, dtype=torch.long)
+    ngrams = torch.full((batch_size, max_ngrams), -1, dtype=torch.long)
     for index, item in enumerate(batch):
         feature_width = int(item["features"].shape[0])
         features[index, :feature_width] = item["features"]

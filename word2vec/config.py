@@ -20,6 +20,7 @@ class ProcessingConfig:
     max_sentences: int | None = None
     max_examples: int | None = None
     ngram_size: int = 2
+    num_buckets: int = 10_000_000
 
     def validate(self) -> None:
         if self.min_count < 1:
@@ -44,6 +45,8 @@ class ProcessingConfig:
             raise ValueError("max_examples must be >= 1")
         if self.ngram_size < 2:
             raise ValueError("ngram_size must be >= 2")
+        if self.num_buckets < 1:
+            raise ValueError("num_buckets must be >= 1")
 
 
 def resolve_corpus_path(path: str | Path) -> Path:

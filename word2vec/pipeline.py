@@ -14,8 +14,8 @@ from word2vec.dataset import (
     make_negative_collate,
     feature_frequency,
     pad_fasttext_collate,
-    word_ngrams,
 )
+from word2vec.fasttext.hashing import hashed_token_ngrams
 from word2vec.negative_sampling import NegativeSampler
 from word2vec.skipgram import SkipGramPairBuilder
 from word2vec.subsample import FrequentWordSubsampler
@@ -45,20 +45,23 @@ class ProcessedCorpus:
     raw_token_count: int
     labels: list[str | None] | None = None
     label_to_id: dict[str, int] | None = None
+    raw_tokens: list[list[str]] | None = None
     negative_sampler: NegativeSampler | None = None
     kept_token_count: int = 0
     dataset: SkipGramDataset | FastTextDataset | None = None
 
     def rebuild_examples(self, epoch: int) -> SkipGramDataset | FastTextDataset:
         if self.config.architecture == "fasttext":
+            if isinstance(self.dataset, FastTextDataset):
+                return self.dataset
             return self._rebuild_fasttext()
         return self._rebuild_windows(epoch)
 
     def _rebuild_fasttext(self) -> FastTextDataset:
         """One document: unique tokens with raw counts, label as target."""
-        if self.labels is None or self.label_to_id is None:
+        if self.labels is None or self.label_to_id is None or self.raw_tokens is None:
             raise RuntimeError("FastText examples need a class label on every document.")
-        documents = list(zip(self.sentences, self.labels, strict=True))
+        documents = list(zip(self.sentences, self.raw_tokens, self.labels, strict=True))
         if self.config.max_examples is not None:
             documents = documents[: self.config.max_examples]
         feature_rows: list[np.ndarray] = []
@@ -66,15 +69,19 @@ class ProcessedCorpus:
         ngram_rows: list[np.ndarray] = []
         label_ids: list[int] = []
         kept_total = 0
+        vocab_size = len(self.vocab)
         ngram_size = self.config.ngram_size
-        for sentence, label in documents:
+        num_buckets = self.config.num_buckets
+        for sentence, tokens, label in documents:
             if label is None:
                 raise RuntimeError("FastText examples need a class label on every document.")
             kept_total += len(sentence)
             features, weights = feature_frequency(sentence)
             feature_rows.append(features)
             weight_rows.append(weights)
-            ngram_rows.append(word_ngrams(sentence, ngram_size))
+            ngram_rows.append(
+                hashed_token_ngrams(tokens, ngram_size, vocab_size, num_buckets)
+            )
             label_ids.append(self.label_to_id[label])
         if not feature_rows:
             raise ValueError("No labeled documents left after vocabulary filtering.")
@@ -156,12 +163,16 @@ def process_corpus(path: str | Path, config: ProcessingConfig | None = None) -> 
     )
     sentences: list[list[int]] = []
     labels: list[str | None] = []
+    raw_tokens: list[list[str]] = []
+    keep_raw = config.architecture == "fasttext"
     for document in raw_documents:
         ids = vocab.encode(document.tokens)
         if not ids:
             continue
         sentences.append(ids)
         labels.append(document.label)
+        if keep_raw:
+            raw_tokens.append(document.tokens)
     if config.architecture == "fasttext" and (not labels or any(label is None for label in labels)):
         raise ValueError("FastText classification requires a class label on every document.")
     label_to_id = None
@@ -185,5 +196,40 @@ def process_corpus(path: str | Path, config: ProcessingConfig | None = None) -> 
         raw_token_count=sum(len(document.tokens) for document in raw_documents),
         labels=labels,
         label_to_id=label_to_id,
+        raw_tokens=raw_tokens if keep_raw else None,
         negative_sampler=negatives,
     )
+
+
+def encode_labeled_corpus(path: str | Path, processed: ProcessedCorpus) -> ProcessedCorpus:
+    """Encode another labeled file with an existing train vocab and label map."""
+    if processed.label_to_id is None:
+        raise RuntimeError("FastText test encoding needs the train class map.")
+    corpus_path = resolve_corpus_path(path)
+    raw_documents = WhitespaceCorpus(corpus_path).documents()
+    sentences: list[list[int]] = []
+    labels: list[str | None] = []
+    raw_tokens: list[list[str]] = []
+    for document in raw_documents:
+        if document.label is None or document.label not in processed.label_to_id:
+            continue
+        ids = processed.vocab.encode(document.tokens)
+        if not ids:
+            continue
+        sentences.append(ids)
+        labels.append(document.label)
+        raw_tokens.append(document.tokens)
+    if not sentences:
+        raise ValueError("No labeled documents left after vocabulary filtering.")
+    encoded = ProcessedCorpus(
+        vocab=processed.vocab,
+        sentences=sentences,
+        subsampler=processed.subsampler,
+        config=processed.config,
+        raw_token_count=sum(len(tokens) for tokens in raw_tokens),
+        labels=labels,
+        label_to_id=processed.label_to_id,
+        raw_tokens=raw_tokens,
+    )
+    encoded.rebuild_examples(epoch=1)
+    return encoded
