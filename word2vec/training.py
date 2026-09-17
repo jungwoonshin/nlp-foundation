@@ -40,6 +40,7 @@ def process(
     max_examples: int | None = None,
     negative_table_size: int = 1_000_000,
     ngram_size: int = 2,
+    num_buckets: int = 10_000_000,
 ) -> ProcessedCorpus:
     """Load `path` and return a PyTorch Dataset of skip-gram or CBOW examples."""
 
@@ -56,6 +57,7 @@ def process(
         max_examples=max_examples,
         negative_table_size=negative_table_size,
         ngram_size=ngram_size,
+        num_buckets=num_buckets,
     )
     return process_corpus(path, config)
 
@@ -74,7 +76,8 @@ def log_corpus(processed: ProcessedCorpus, path: Path | None = None) -> None:
     print(f"architecture: {processed.config.architecture}")
     if processed.config.architecture == "fasttext":
         print(f"classes: {len(processed.label_to_id or {})}")
-        print("each example: normalized feature frequency -> class label")
+        print(f"word n-grams: {processed.config.ngram_size}  buckets: {processed.config.num_buckets:,}")
+        print("each example: bag of words + hashed n-grams -> class label")
     else:
         print("each epoch: subsample each sentence, cut at max_sentence_length, then windows")
 
@@ -226,5 +229,6 @@ def smoke_process(
         architecture=architecture,
         max_examples=2,
         negative_table_size=64,
+        num_buckets=64,
     )
     return processed, path

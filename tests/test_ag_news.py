@@ -6,21 +6,21 @@ from tempfile import TemporaryDirectory
 
 import torch
 
-from prepare_ag_news import _tokenize, prepare_ag_news
+from prepare_ag_news import normalize_text, prepare_ag_news
 from word2vec.config import ProcessingConfig
 from word2vec.corpus import LABEL_PREFIX, WhitespaceCorpus
-from word2vec.fasttext.hashing import hash_word_ngram
+from word2vec.fasttext.hashing import hash_word_ngram, hashed_token_ngrams
 from word2vec.fasttext.model import BOW_FastText
 from word2vec.dataset import pad_fasttext_collate
-from word2vec.pipeline import process_corpus
+from word2vec.pipeline import encode_labeled_corpus, process_corpus
 from word2vec.subword import fasttext_hash
 
 
 class AgNewsPrepareTests(unittest.TestCase):
-    def test_tokenize_drops_punctuation_and_case(self) -> None:
+    def test_normalize_keeps_punctuation_tokens_like_official_fasttext(self) -> None:
         self.assertEqual(
-            _tokenize("Wall St. Bears (Reuters)"),
-            ["wall", "st", "bears", "reuters"],
+            normalize_text('"3","Wall St. Bears (Reuters)","Short-sellers are seeing green."'),
+            f"{LABEL_PREFIX}3 , wall st . bears ( reuters ) , short-sellers are seeing green .",
         )
 
     def test_prepare_writes_one_labeled_line_per_article(self) -> None:
@@ -33,26 +33,18 @@ class AgNewsPrepareTests(unittest.TestCase):
             raw = data_dir / "raw"
             raw.mkdir()
             (raw / "ag_news_train.csv").write_text(csv_text, encoding="utf-8")
-            out = prepare_ag_news(data_dir)
-            lines = out.read_text(encoding="utf-8").splitlines()
+            (raw / "ag_news_test.csv").write_text(csv_text.splitlines()[0] + "\n", encoding="utf-8")
+            train_out, test_out = prepare_ag_news(data_dir)
+            lines = train_out.read_text(encoding="utf-8").splitlines()
+            test_lines = test_out.read_text(encoding="utf-8").splitlines()
         self.assertEqual(len(lines), 2)
         self.assertEqual(
-            lines[0].split(),
-            [
-                f"{LABEL_PREFIX}3",
-                "wall",
-                "st",
-                "bears",
-                "reuters",
-                "short",
-                "sellers",
-                "are",
-                "seeing",
-                "green",
-            ],
+            lines[0],
+            f"{LABEL_PREFIX}3 , wall st . bears ( reuters ) , short-sellers are seeing green .",
         )
-        self.assertEqual(lines[1].split()[:2], [f"{LABEL_PREFIX}2", "sports"])
+        self.assertEqual(lines[1].split()[:2], [f"{LABEL_PREFIX}2", ","])
         self.assertNotEqual(lines[0], lines[1])
+        self.assertEqual(test_lines, [lines[0]])
 
 
 class CorpusReadLimitTests(unittest.TestCase):
@@ -134,6 +126,7 @@ class CorpusReadLimitTests(unittest.TestCase):
                     min_count=1,
                     subsample_threshold=1.0,
                     architecture="fasttext",
+                    num_buckets=16,
                 ),
             )
         examples = processed.rebuild_examples(epoch=1)
@@ -152,13 +145,23 @@ class CorpusReadLimitTests(unittest.TestCase):
         self.assertEqual(int(first["label"]), processed.label_to_id["3"])
         self.assertEqual(int(examples[1]["label"]), processed.label_to_id["2"])
         sports, win = (processed.vocab.word_to_id[w] for w in ("sports", "win"))
+        vocab_size = len(processed.vocab)
         first_ngrams = first["ngrams"]
-        self.assertEqual(tuple(first_ngrams.shape), (2, 2))
-        self.assertEqual(first_ngrams.tolist(), [[alpha, beta], [beta, alpha]])
+        self.assertEqual(tuple(first_ngrams.shape), (2,))
+        self.assertEqual(
+            first_ngrams.tolist(),
+            [
+                vocab_size + hash_word_ngram(["alpha", "beta"]) % 16,
+                vocab_size + hash_word_ngram(["beta", "alpha"]) % 16,
+            ],
+        )
         second = examples[1]
         self.assertEqual(tuple(second["features"].shape), (2,))
-        self.assertEqual(tuple(second["ngrams"].shape), (1, 2))
-        self.assertEqual(second["ngrams"].tolist(), [[sports, win]])
+        self.assertEqual(tuple(second["ngrams"].shape), (1,))
+        self.assertEqual(
+            second["ngrams"].tolist(),
+            [vocab_size + hash_word_ngram(["sports", "win"]) % 16],
+        )
         batch = next(
             iter(processed.dataloader(batch_size=2, epoch=1, shuffle=False, with_negatives=False))
         )
@@ -167,20 +170,27 @@ class CorpusReadLimitTests(unittest.TestCase):
         self.assertIn("ngrams", batch)
         self.assertIn("label", batch)
         self.assertEqual(tuple(batch["features"].shape), (2, 2))
-        self.assertEqual(tuple(batch["ngrams"].shape), (2, 2, 2))
-        self.assertEqual(batch["ngrams"][1].tolist(), [[sports, win], [-1, -1]])
+        self.assertEqual(tuple(batch["ngrams"].shape), (2, 2))
+        self.assertEqual(
+            batch["ngrams"][1].tolist(),
+            [vocab_size + hash_word_ngram(["sports", "win"]) % 16, -1],
+        )
         self.assertAlmostEqual(float(first["weights"].sum()), 3.0)
         self.assertNotIn("negatives", batch)
         self.assertNotIn("center", batch)
         short_batch = pad_fasttext_collate([second])
         self.assertEqual(tuple(short_batch["features"].shape), (1, 2))
-        self.assertEqual(tuple(short_batch["ngrams"].shape), (1, 1, 2))
+        self.assertEqual(tuple(short_batch["ngrams"].shape), (1, 1))
+        self.assertEqual(sports, processed.vocab.word_to_id["sports"])
+        self.assertEqual(win, processed.vocab.word_to_id["win"])
 
     def test_word_ngram_hash_matches_fasttext_combine(self) -> None:
         expected = (
             fasttext_hash("alpha") * 116049371 + fasttext_hash("beta")
         ) & 0xFFFFFFFFFFFFFFFF
         self.assertEqual(hash_word_ngram(["alpha", "beta"]), expected)
+        ids = hashed_token_ngrams(["alpha", "beta"], ngram_size=2, vocab_size=5, num_buckets=16)
+        self.assertEqual(ids.tolist(), [5 + expected % 16])
 
     def test_fasttext_averages_word_and_hashed_ngram_embeddings(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -192,6 +202,7 @@ class CorpusReadLimitTests(unittest.TestCase):
                     min_count=1,
                     subsample_threshold=1.0,
                     architecture="fasttext",
+                    num_buckets=16,
                 ),
             )
         model = BOW_FastText(
@@ -215,6 +226,83 @@ class CorpusReadLimitTests(unittest.TestCase):
             )
         # (e_alpha + e_beta + e_bigram) / 3
         self.assertTrue(torch.allclose(hidden, torch.tensor([[1 / 3, 1 / 3, 1.0, 0.0]])))
+
+    def test_init_like_fasttext_zeros_output_and_bounds_input(self) -> None:
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "docs.txt"
+            path.write_text(f"{LABEL_PREFIX}3 alpha beta\n", encoding="utf-8")
+            processed = process_corpus(
+                path,
+                ProcessingConfig(
+                    min_count=1,
+                    architecture="fasttext",
+                    num_buckets=8,
+                ),
+            )
+        dim = 8
+        model = BOW_FastText(
+            embedding_dim=dim,
+            vocab=processed.vocab,
+            num_classes=2,
+            num_buckets=8,
+        )
+        bound = 1.0 / dim
+        self.assertTrue(torch.all(model.input_embedding.weight.abs() <= bound + 1e-6))
+        self.assertTrue(torch.all(model.classifier.weight == 0))
+        self.assertIsNone(model.classifier.bias)
+
+    def test_mean_pooling_input_grad_is_inv_count(self) -> None:
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "docs.txt"
+            path.write_text(f"{LABEL_PREFIX}3 alpha beta\n", encoding="utf-8")
+            processed = process_corpus(
+                path,
+                ProcessingConfig(
+                    min_count=1,
+                    architecture="fasttext",
+                    num_buckets=8,
+                ),
+            )
+        model = BOW_FastText(
+            embedding_dim=1,
+            vocab=processed.vocab,
+            num_classes=2,
+            num_buckets=8,
+        )
+        example = processed.rebuild_examples(epoch=1)[0]
+        features = example["features"].unsqueeze(0)
+        weights = example["weights"].unsqueeze(0)
+        ngrams = example["ngrams"].unsqueeze(0)
+        hidden = model.encode(features, weights, ngrams)
+        hidden.sum().backward()
+        alpha = processed.vocab.word_to_id["alpha"]
+        grad = model.input_embedding.weight.grad
+        if grad.is_sparse:
+            grad = grad.to_dense()
+        # Forward mean uses 3 features, so d(sum(hidden))/d(e_alpha) = 1/3.
+        self.assertAlmostEqual(float(grad[alpha]), 1.0 / 3.0)
+
+    def test_encode_labeled_corpus_uses_train_vocab_and_labels(self) -> None:
+        with TemporaryDirectory() as tmp:
+            train_path = Path(tmp) / "train.txt"
+            test_path = Path(tmp) / "test.txt"
+            train_path.write_text(
+                f"{LABEL_PREFIX}3 alpha beta\n{LABEL_PREFIX}2 sports win\n",
+                encoding="utf-8",
+            )
+            test_path.write_text(f"{LABEL_PREFIX}2 alpha win\n", encoding="utf-8")
+            train = process_corpus(
+                train_path,
+                ProcessingConfig(
+                    min_count=1,
+                    architecture="fasttext",
+                    num_buckets=8,
+                ),
+            )
+            test = encode_labeled_corpus(test_path, train)
+        self.assertEqual(len(test.dataset), 1)
+        self.assertEqual(int(test.dataset[0]["label"]), train.label_to_id["2"])
+        self.assertEqual(test.vocab, train.vocab)
 
     def test_fasttext_rejects_unlabeled_documents(self) -> None:
         with TemporaryDirectory() as tmp:
