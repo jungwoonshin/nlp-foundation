@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from prepare_ag_news import prepare_ag_news
+from scripts.fasttext.prepare import prepare_ag_news
 from textcnn.config import TextCNNConfig
 from textcnn.model import TextCNN
 from textcnn.pipeline import process_sentences
@@ -27,7 +27,7 @@ def textcnn(*, smoke: bool = False) -> None:
             assert tmp is not None
             processed, path = smoke_process(tmp)
         else:
-            path = prepare_ag_news(DATA_DIR)
+            path, _ = prepare_ag_news(DATA_DIR)
             processed = process_sentences(
                 path,
                 TextCNNConfig(max_sentences=100),

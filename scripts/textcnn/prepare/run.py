@@ -6,6 +6,8 @@ import re
 import urllib.request
 from pathlib import Path
 
+from scripts.fasttext.prepare import prepare_ag_news
+from scripts.paths import DATA_DIR
 from word2vec.corpus import LABEL_PREFIX
 
 # Harvard NLP copy of TREC, already tokenized with Kim's `clean_str(..., TREC=True)`.
@@ -133,4 +135,5 @@ def prepare_trec(data_dir: Path) -> tuple[Path, Path]:
 
 
 if __name__ == "__main__":
-    prepare_trec(Path(__file__).resolve().parent / "data")
+    prepare_ag_news(DATA_DIR)
+    prepare_trec(DATA_DIR)

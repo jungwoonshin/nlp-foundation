@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import argparse
 import random
-from pathlib import Path
 
 import torch
 
-from prepare_trec import prepare_trec
+from scripts.textcnn.prepare import prepare_trec
 from textcnn.config import TextCNNConfig
 from textcnn.dataset import SentenceDataset
 from textcnn.model import TextCNN
