@@ -10,7 +10,7 @@ import argparse
 
 import torch
 
-from prepare_ag_news import prepare_ag_news
+from scripts.fasttext.prepare import prepare_ag_news
 from word2vec.config import ProcessingConfig
 from word2vec.fasttext.model import BOW_FastText
 from word2vec.fasttext.train import (

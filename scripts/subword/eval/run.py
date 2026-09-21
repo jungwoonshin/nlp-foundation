@@ -8,14 +8,14 @@ text8 is Mahoney-processed Wikipedia of similar size (17M tokens).
 from __future__ import annotations
 
 import argparse
-import urllib.request
-import zipfile
 from functools import partial
 from pathlib import Path
 
 import torch
 
-from prepare_text8 import prepare_text8
+from scripts.paths import DATA_DIR
+from scripts.subword.prepare import prepare_rw
+from scripts.word2vec.prepare import prepare_text8
 from word2vec.config import ProcessingConfig
 from word2vec.pipeline import process_corpus
 from word2vec.similarity import load_rw, spearman_from_vectors
@@ -23,9 +23,6 @@ from word2vec.subword.model import SubwordNegativeSampling
 from word2vec.training import device, fit, log_corpus, neg_loss
 from word2vec.vocab import Vocab
 
-ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT / "data"
-RW_URL = "https://nlp.stanford.edu/~lmthang/morphoNLM/rw.zip"
 CHECKPOINT = DATA_DIR / "raw" / "sisg_text8.pt"
 
 # Bojanowski et al. 2017 §4.3 (SISG), evaluated as in §5.4 on RW.
@@ -41,24 +38,6 @@ BATCH_SIZE = 8192
 LEARNING_RATE = 0.05
 SEED = 42
 PAPER_RW_RHO_X100 = 45.0
-
-
-def prepare_rw(data_dir: Path) -> Path:
-    raw_dir = data_dir / "raw"
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    out_path = raw_dir / "rw" / "rw.txt"
-    if out_path.is_file() and out_path.stat().st_size > 0:
-        return out_path
-    zip_path = raw_dir / "rw.zip"
-    if not zip_path.is_file():
-        print(f"downloading Rare Words -> {zip_path}")
-        urllib.request.urlretrieve(RW_URL, zip_path)
-    print(f"extracting {zip_path} -> {raw_dir}")
-    with zipfile.ZipFile(zip_path) as archive:
-        archive.extractall(raw_dir)
-    if not out_path.is_file():
-        raise FileNotFoundError(f"rw/rw.txt was not in {zip_path}")
-    return out_path
 
 
 def _sum_neg_loss(

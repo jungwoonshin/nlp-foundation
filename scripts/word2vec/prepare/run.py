@@ -6,6 +6,8 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+from scripts.paths import DATA_DIR
+
 TEXT8_URL = "http://mattmahoney.net/dc/text8.zip"
 QUESTIONS_URL = (
     "https://raw.githubusercontent.com/tmikolov/word2vec/master/questions-words.txt"
@@ -48,8 +50,7 @@ def prepare_questions_words(data_dir: Path) -> Path:
 
 
 if __name__ == "__main__":
-    data = Path(__file__).resolve().parent / "data"
-    text8 = prepare_text8(data)
-    questions = prepare_questions_words(data)
+    text8 = prepare_text8(DATA_DIR)
+    questions = prepare_questions_words(DATA_DIR)
     print(f"text8: {text8} ({text8.stat().st_size:,} bytes)")
     print(f"questions: {questions} ({questions.stat().st_size:,} bytes)")

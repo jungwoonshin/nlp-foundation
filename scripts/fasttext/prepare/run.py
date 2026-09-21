@@ -5,6 +5,7 @@ from __future__ import annotations
 import urllib.request
 from pathlib import Path
 
+from scripts.paths import DATA_DIR
 from word2vec.corpus import LABEL_PREFIX
 
 # Same CSV torchtext / CharCNN Keras use (Zhang et al. 2015 split).
@@ -86,4 +87,4 @@ def prepare_ag_news(data_dir: Path) -> tuple[Path, Path]:
 
 
 if __name__ == "__main__":
-    prepare_ag_news(Path(__file__).resolve().parent / "data")
+    prepare_ag_news(DATA_DIR)

@@ -13,14 +13,12 @@ from pathlib import Path
 
 import torch
 
-from prepare_text8 import prepare_questions_words, prepare_text8
+from scripts.paths import DATA_DIR
+from scripts.word2vec.prepare import prepare_questions_words, prepare_text8
 from word2vec.analogy import evaluate_analogies, format_report, load_questions
 from word2vec.negative_sampling.model import NegativeSampling
 from word2vec.training import device, fit, log_corpus, neg_loss, process
 from word2vec.vocab import Vocab
-
-ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT / "data"
 
 EMBEDDING_DIM = 100
 WINDOW_SIZE = 5
