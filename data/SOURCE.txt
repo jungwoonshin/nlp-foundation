@@ -15,7 +15,7 @@ kept small enough to store in git.
 
 AG News is the smallest / easiest set in Joulin et al., "Bag of Tricks
 for Efficient Text Classification" (Zhang et al. 2015 split): 120,000
-train docs, 4 classes. `python prepare_ag_news.py` (or `train_fasttext.py`)
+train docs, 4 classes. `python prepare.py fasttext` (or `python train.py fasttext`)
 downloads the public train.csv into data/raw/ and writes one FastText
 line per article to data/ag_news.txt (`__label__<1-4> tokens...`).
 Newlines separate documents; the leading `__label__` token is the class
@@ -24,10 +24,28 @@ Newlines separate documents; the leading `__label__` token is the class
 The zip, full text8, and questions-words.txt live in data/raw/ (gitignored).
 To restore them:
 
-  python prepare_text8.py
+  python prepare.py word2vec
 
 or:
 
   curl -L -o data/raw/text8.zip http://mattmahoney.net/dc/text8.zip
   python -c "import zipfile; zipfile.ZipFile('data/raw/text8.zip').extractall('data/raw')"
   curl -L -o data/raw/questions-words.txt https://raw.githubusercontent.com/tmikolov/word2vec/master/questions-words.txt
+
+IWSLT'15 English–Vietnamese is the smallest public set used with Luong et al.
+(2015) attention NMT (Stanford NMT page, [Small]; the EMNLP paper itself
+trains on WMT'14 En–De). `python prepare.py luong_attention` writes the
+already-tokenized TED splits into data/raw/iwslt15.en-vi/:
+
+  https://nlp.stanford.edu/projects/nmt/data/iwslt15.en-vi/
+
+If Stanford returns 403, the same files are fetched from the PaddleNLP mirror:
+
+  https://bj.bcebos.com/paddlenlp/datasets/iwslt15.en-vi.tar.gz
+
+  train.en / train.vi   (~133K pairs)
+  tst2012.en / tst2012.vi   (dev)
+  tst2013.en / tst2013.vi   (test)
+  vocab.en / vocab.vi
+
+The raw files are gitignored via data/raw/.
