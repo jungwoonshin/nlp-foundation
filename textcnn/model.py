@@ -1,4 +1,4 @@
-# Implement TextCNN here. train_textcnn.py and tests/test_textcnn.py expect this interface.
+# Implement TextCNN here. scripts/textcnn/train and tests/test_textcnn.py expect this interface.
 #
 import torch
 from torch import nn

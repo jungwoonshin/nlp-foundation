@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 
 import torch
 
-from prepare_ag_news import normalize_text, prepare_ag_news
+from scripts.fasttext.prepare import normalize_text, prepare_ag_news
 from word2vec.config import ProcessingConfig
 from word2vec.corpus import LABEL_PREFIX, WhitespaceCorpus
 from word2vec.fasttext.hashing import hash_word_ngram, hashed_token_ngrams

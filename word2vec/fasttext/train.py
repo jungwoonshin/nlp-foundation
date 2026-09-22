@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from prepare_ag_news import prepare_ag_news
+from scripts.fasttext.prepare import prepare_ag_news
 from word2vec.fasttext.model import BOW_FastText
 from word2vec.training import (
     ROOT,
