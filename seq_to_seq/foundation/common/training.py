@@ -95,9 +95,9 @@ def fit(
         for batch in loader:
             src = batch["src"].to(chosen_device)
             lengths = batch["src_lengths"].to(chosen_device)
-            tgt_in = batch["tgt_in"].to(chosen_device)
-            tgt_out = batch["tgt_out"].to(chosen_device)
-            logits = model(src, lengths, tgt_in)
+            tgt_in = batch["tgt_in"].to(chosen_device) # (batch, seq_len)
+            tgt_out = batch["tgt_out"].to(chosen_device) # (batch, seq_len)
+            logits = model(src, lengths, tgt_in) # (batch, seq_len, vocab_size)
             loss = F.cross_entropy(
                 logits.reshape(-1, logits.size(-1)),
                 tgt_out.reshape(-1),

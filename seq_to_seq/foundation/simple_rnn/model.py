@@ -53,7 +53,10 @@ class SimpleRNN(nn.Module):
             mask = (t < lengths).unsqueeze(1)
             h = torch.where(mask, h_t, h)
             outputs.append(torch.where(mask, h, torch.zeros_like(h)))
-        return torch.stack(outputs, dim=1), h.unsqueeze(0)
+        
+        # torch.stack(outputs, dim=1) -> (batch, seq_len, hidden_size)
+        # h.unsqueeze(0) -> (1, batch, hidden_size)
+        return torch.stack(outputs, dim=1), h.unsqueeze(0) 
 
 
 class Seq2Seq(nn.Module):
@@ -106,7 +109,10 @@ class Seq2Seq(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         embedded = self.decoder_embed(tokens)
         if self.backend == "scratch":
-            return self.decoder(embedded, h_0=state)
+            # embedded is (batch, seq_len, embed_dim) -> [BOS, Token0, Token1, ...] -> Input X for RNN Cell
+            # state is (1, batch, hidden_size) -> Hidden State from Encode Step
+            # return is (batch, seq_len, hidden_size)
+            return self.decoder(embedded, h_0=state) # Teacher Forcing : Input X is the target token
         return self.decoder(embedded, state)
 
     def forward(

@@ -61,6 +61,8 @@ class StackedRNN(nn.Module):
                 outputs.append(h_layers[-1])
             else:
                 outputs.append(torch.where(mask, h_layers[-1], torch.zeros_like(h_layers[-1])))
+        # torch.stack(outputs, dim=1) -> (batch, seq_len, hidden_size)
+        # torch.stack(h_layers, dim=0) -> (num_layers, batch, hidden_size)
         return torch.stack(outputs, dim=1), torch.stack(h_layers, dim=0)
 
 
