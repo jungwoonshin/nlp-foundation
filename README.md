@@ -31,8 +31,9 @@ that stage. `python prepare.py all` downloads or verifies every dataset.
 | `luong_attention` | yes | yes | yes | Luong et al. NMT on IWSLT'15 En–Vi |
 
 Seq2seq foundation models train on a synthetic reverse-sequence task (no
-download). Luong attention model code is scaffolded; training and eval use
-`DummyNMT` until the full architecture is implemented.
+download). The Luong model implements location-based global attention and
+input feeding; the other alignment scores and local-attention variants remain
+explicit stubs.
 
 ## Data
 

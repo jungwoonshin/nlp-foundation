@@ -101,7 +101,7 @@ def fit(
             clip_grad_norm_(model.parameters(), config.grad_clip)
             optimizer.step()
             n = int(src.shape[0])
-            epoch_loss += float(loss) * n
+            epoch_loss += loss.detach().item() * n
             epoch_docs += n
         last_loss = epoch_loss / max(epoch_docs, 1)
         parts = [
