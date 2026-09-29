@@ -21,7 +21,7 @@ class LuongConfig:
     """
 
     attention: AttentionKind = "global"
-    score: AlignmentScore = "dot"
+    score: AlignmentScore = "location"
     input_feeding: bool = True
     reverse_source: bool = True
     max_len: int = 50
@@ -85,7 +85,7 @@ class LuongConfig:
 
     @staticmethod
     def smoke() -> LuongConfig:
-        """Tiny Adam run so DummyNMT can overfit without SGD lr=1."""
+        """Tiny Adam configuration for an end-to-end LuongNMT smoke run."""
         config = LuongConfig(
             num_layers=1,
             embed_dim=32,

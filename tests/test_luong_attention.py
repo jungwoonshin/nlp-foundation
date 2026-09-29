@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
@@ -34,7 +35,6 @@ from seq_to_seq.attention.model.decoder import AttentionalDecoder
 from seq_to_seq.attention.model.encoder import StackedLSTMEncoder
 from seq_to_seq.attention.model.global_attention import GlobalAttention
 from seq_to_seq.attention.model.local_attention import LocalAttention
-from seq_to_seq.attention.model.lstm import LSTMCell, StackedLSTM
 from seq_to_seq.attention.model.nmt import LuongNMT
 from seq_to_seq.attention.model.scores import score_concat, score_dot, score_general, score_location
 from seq_to_seq.attention.training.dummy import DummyNMT
@@ -80,13 +80,26 @@ class ParallelDatasetTests(unittest.TestCase):
         self.assertEqual(processed.src_text[0], ["hello", "world"])
 
     def test_length_filter_drops_long_pairs(self) -> None:
-        kept = filter_by_length([(["a"] * 3, ["b"] * 2), (["a"] * 6, ["b"])], max_len=4)
-        self.assertEqual(len(kept), 1)
+        kept = filter_by_length(
+            [
+                (["a"] * 3, ["b"] * 2),
+                (["a"] * 4, ["b"] * 4),
+                (["a"] * 5, ["b"]),
+                (["a"], ["b"] * 5),
+            ],
+            max_len=4,
+        )
+        self.assertEqual(len(kept), 2)
         self.assertEqual(len(kept[0][0]), 3)
+        self.assertEqual(len(kept[1][0]), 4)
 
     def test_collate_pads_and_lengths(self) -> None:
-        dataset = ParallelDataset([[4, 5, 6], [7, 8]], [[4, 5], [6]])
+        dataset = ParallelDataset(
+            [[4, 5, 6], [7, 8], [9, 10, 11, 12, 13]],
+            [[4, 5], [6], [7]],
+        )
         batch = pad_collate([dataset[0], dataset[1]])
+        # Padding follows this batch's maximum (3), not the dataset maximum (5).
         self.assertEqual(tuple(batch["src"].shape), (2, 3))
         self.assertEqual(batch["src_lengths"].tolist(), [3, 2])
         self.assertEqual(int(batch["src"][1, 2]), PAD_ID)
@@ -185,19 +198,106 @@ class DummyTrainingTests(unittest.TestCase):
         self.assertEqual(learning_rate_for_epoch(50, adam), adam.learning_rate)
 
 
+class AttentionModelTests(unittest.TestCase):
+    def test_location_attention_masks_padding_and_handles_short_batch_width(self) -> None:
+        attention = GlobalAttention(2, "location", max_source_length=5)
+        with torch.no_grad():
+            attention.weight_a.weight.zero_()
+        decoder_hidden = torch.zeros(2, 2)
+        encoder_outputs = torch.tensor(
+            [
+                [[1.0, 0.0], [3.0, 0.0], [5.0, 0.0]],
+                [[2.0, 0.0], [4.0, 0.0], [100.0, 0.0]],
+            ]
+        )
+        result = attention(decoder_hidden, encoder_outputs, torch.tensor([3, 2]))
+
+        self.assertIsNone(attention.weight_a.bias)
+        self.assertEqual(tuple(attention.weight_a.weight.shape), (5, 2))
+        self.assertIsNone(result.p_t)
+        self.assertEqual(tuple(result.weights.shape), (2, 3))
+        self.assertTrue(torch.allclose(result.weights.sum(dim=-1), torch.ones(2)))
+        self.assertEqual(result.weights[1, 2].detach().item(), 0.0)
+        self.assertTrue(
+            torch.allclose(
+                result.context,
+                torch.tensor([[3.0, 0.0], [3.0, 0.0]]),
+            )
+        )
+
+    def test_location_attention_rejects_source_beyond_fixed_capacity(self) -> None:
+        attention = GlobalAttention(2, "location", max_source_length=5)
+        with self.assertRaisesRegex(
+            ValueError,
+            "padded source length 6 exceeds location-attention capacity 5",
+        ):
+            attention(
+                torch.zeros(1, 2),
+                torch.zeros(1, 6, 2),
+                torch.tensor([6]),
+            )
+
+    def test_luong_nmt_forward_backward_and_generate(self) -> None:
+        config = LuongConfig.smoke()
+        processed = smoke_parallel(config)
+        batch = next(iter(processed.dataloader(2, shuffle=False)))
+        model = LuongNMT(processed.src_vocab_size, processed.tgt_vocab_size, config)
+        self.assertEqual(model.attention.max_source_length, config.max_len)
+
+        logits = model(batch["src"], batch["src_lengths"], batch["tgt_in"])
+        self.assertEqual(
+            tuple(logits.shape),
+            (2, batch["tgt_in"].shape[1], processed.tgt_vocab_size),
+        )
+        self.assertTrue(torch.isfinite(logits).all())
+        loss = F.cross_entropy(
+            logits.reshape(-1, logits.size(-1)),
+            batch["tgt_out"].reshape(-1),
+            ignore_index=PAD_ID,
+        )
+        loss.backward()
+        self.assertIsNotNone(model.attention.weight_a.weight.grad)
+        self.assertIsNotNone(model.w_c.weight.grad)
+        self.assertIsNone(model.w_c.bias)
+        self.assertIsNone(model.out.bias)
+        self.assertEqual(
+            model.decoder.cells[0].ih.in_features,
+            config.embed_dim + config.hidden_size,
+        )
+
+        no_feed_config = replace(config, input_feeding=False)
+        no_feed_model = LuongNMT(
+            processed.src_vocab_size,
+            processed.tgt_vocab_size,
+            no_feed_config,
+        )
+        self.assertEqual(
+            no_feed_model.decoder.cells[0].ih.in_features,
+            config.embed_dim,
+        )
+        no_feed_logits = no_feed_model(
+            batch["src"], batch["src_lengths"], batch["tgt_in"]
+        )
+        self.assertEqual(no_feed_logits.shape, logits.shape)
+
+        prediction = model.generate(batch["src"], batch["src_lengths"], max_len=4)
+        self.assertEqual(prediction.shape[0], 2)
+        self.assertGreaterEqual(prediction.shape[1], 1)
+        self.assertLessEqual(prediction.shape[1], 4)
+
+    def test_luong_nmt_rejects_unimplemented_attention_configurations(self) -> None:
+        dot_config = replace(LuongConfig.smoke(), score="dot")
+        with self.assertRaises(NotImplementedError):
+            LuongNMT(12, 12, dot_config)
+        local_config = replace(LuongConfig.smoke(), attention="local_p")
+        with self.assertRaises(NotImplementedError):
+            LuongNMT(12, 12, local_config)
+
+
 class ModelStubTests(unittest.TestCase):
-    def test_luong_nmt_and_layers_raise(self) -> None:
-        config = LuongConfig()
-        with self.assertRaises(NotImplementedError):
-            LuongNMT(12, 12, config)
-        with self.assertRaises(NotImplementedError):
-            LSTMCell(8, 8)
-        with self.assertRaises(NotImplementedError):
-            StackedLSTM(8, 8, 2)
+    def test_unimplemented_layers_raise(self) -> None:
         with self.assertRaises(NotImplementedError):
             StackedLSTMEncoder(12, 8, 8, 2)
-        with self.assertRaises(NotImplementedError):
-            GlobalAttention(8, "dot")
         with self.assertRaises(NotImplementedError):
             LocalAttention(8, "general", predictive=True)
         with self.assertRaises(NotImplementedError):

@@ -4,9 +4,6 @@ from typing import Literal
 
 import torch
 from torch import nn
-from torch.nn.utils.rnn import pack_padded_sequence
-
-from seq_to_seq.foundation.common.dataset import BOS_ID, EOS_ID, PAD_ID
 
 Backend = Literal["scratch", "torch"]
 LSTMState = tuple[torch.Tensor, torch.Tensor]
@@ -94,6 +91,10 @@ class StackedLSTM(nn.Module):
                 outputs.append(h_layers[-1])
             else:
                 outputs.append(torch.where(mask, h_layers[-1], torch.zeros_like(h_layers[-1])))
+        # o_n: (batch, seq_len, hidden_size), top-layer output at each step
+        # h_n/c_n: (num_layers, batch, hidden_size), final state of each layer
+        o_n = torch.stack(outputs, dim=1)
         h_n = torch.stack(h_layers, dim=0)
         c_n = torch.stack(c_layers, dim=0)
-        return torch.stack(outputs, dim=1), (h_n, c_n)
+
+        return o_n, (h_n, c_n)
