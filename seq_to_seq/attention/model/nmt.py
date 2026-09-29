@@ -11,7 +11,7 @@ from seq_to_seq.attention.model.types import AttentionOutput, LSTMState
 
 
 class LuongNMT(nn.Module):
-    """Encoder-decoder NMT with location-based global attention (Luong et al. 2015).
+    """Encoder-decoder NMT with global attention (Luong et al. 2015).
 
     Training (teacher forcing):
       forward(src, src_lengths, tgt_in) -> logits (batch, tgt_len, tgt_vocab)
@@ -34,10 +34,6 @@ class LuongNMT(nn.Module):
         if config.attention != "global":
             raise NotImplementedError(
                 "LuongNMT currently implements only global attention."
-            )
-        if config.score != "location":
-            raise NotImplementedError(
-                "LuongNMT currently implements only location-based alignment."
             )
         embed_dim = config.embed_dim
         hidden_size = config.hidden_size
