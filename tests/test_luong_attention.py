@@ -36,7 +36,6 @@ from seq_to_seq.attention.model.encoder import StackedLSTMEncoder
 from seq_to_seq.attention.model.global_attention import GlobalAttention
 from seq_to_seq.attention.model.local_attention import LocalAttention
 from seq_to_seq.attention.model.nmt import LuongNMT
-from seq_to_seq.attention.model.scores import score_concat, score_dot, score_general, score_location
 from seq_to_seq.attention.training.dummy import DummyNMT
 from seq_to_seq.attention.training.loop import fit, initialize_parameters, learning_rate_for_epoch
 
@@ -237,6 +236,76 @@ class AttentionModelTests(unittest.TestCase):
                 torch.tensor([6]),
             )
 
+    def test_content_attention_scores_match_equations_and_allow_longer_sources(self) -> None:
+        decoder_hidden = torch.tensor([[1.0, 2.0]])
+        encoder_outputs = torch.tensor(
+            [[[3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]]
+        )
+
+        dot_attention = GlobalAttention(2, "dot", max_source_length=1)
+        expected_dot = torch.einsum(
+            "bi,bsi->bs", decoder_hidden, encoder_outputs
+        )
+        self.assertTrue(
+            torch.allclose(
+                dot_attention.dot_score(decoder_hidden, encoder_outputs),
+                expected_dot,
+            )
+        )
+
+        general_attention = GlobalAttention(2, "general", max_source_length=1)
+        general_weight = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
+        with torch.no_grad():
+            general_attention.weight_a.weight.copy_(general_weight)
+        expected_general = torch.einsum(
+            "bi,ij,bsj->bs",
+            decoder_hidden,
+            general_weight,
+            encoder_outputs,
+        )
+        self.assertTrue(
+            torch.allclose(
+                general_attention.general_score(decoder_hidden, encoder_outputs),
+                expected_general,
+            )
+        )
+
+        concat_attention = GlobalAttention(2, "concat", max_source_length=1)
+        concat_weight = torch.tensor(
+            [[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 1.0, 0.0]]
+        )
+        concat_vector = torch.tensor([2.0, -1.0])
+        with torch.no_grad():
+            concat_attention.weight_a.weight.copy_(concat_weight)
+            concat_attention.v_a.weight.copy_(concat_vector.unsqueeze(0))
+        decoder_by_source = decoder_hidden.unsqueeze(1).expand(-1, 3, -1)
+        combined = torch.cat([decoder_by_source, encoder_outputs], dim=-1)
+        expected_concat = torch.einsum(
+            "h,bsh->bs",
+            concat_vector,
+            torch.tanh(torch.einsum("hi,bsi->bsh", concat_weight, combined)),
+        )
+        self.assertTrue(
+            torch.allclose(
+                concat_attention.concat_score(decoder_hidden, encoder_outputs),
+                expected_concat,
+            )
+        )
+
+        for attention in (dot_attention, general_attention, concat_attention):
+            with self.subTest(score=attention.score):
+                result = attention(
+                    decoder_hidden,
+                    encoder_outputs,
+                    torch.tensor([2]),
+                )
+                self.assertEqual(tuple(result.weights.shape), (1, 3))
+                self.assertEqual(tuple(result.context.shape), (1, 2))
+                self.assertEqual(result.weights[0, 2].detach().item(), 0.0)
+                self.assertTrue(
+                    torch.allclose(result.weights.sum(dim=-1), torch.ones(1))
+                )
+
     def test_luong_nmt_forward_backward_and_generate(self) -> None:
         config = LuongConfig.smoke()
         processed = smoke_parallel(config)
@@ -285,11 +354,41 @@ class AttentionModelTests(unittest.TestCase):
         self.assertGreaterEqual(prediction.shape[1], 1)
         self.assertLessEqual(prediction.shape[1], 4)
 
-    def test_luong_nmt_rejects_unimplemented_attention_configurations(self) -> None:
-        dot_config = replace(LuongConfig.smoke(), score="dot")
-        with self.assertRaises(NotImplementedError):
-            LuongNMT(12, 12, dot_config)
-        local_config = replace(LuongConfig.smoke(), attention="local_p")
+    def test_luong_nmt_supports_all_global_scores_and_rejects_local_attention(self) -> None:
+        base_config = LuongConfig.smoke()
+        processed = smoke_parallel(base_config)
+        batch = next(iter(processed.dataloader(2, shuffle=False)))
+
+        for score in ("dot", "general", "concat", "location"):
+            with self.subTest(score=score):
+                config = replace(base_config, score=score)
+                model = LuongNMT(
+                    processed.src_vocab_size,
+                    processed.tgt_vocab_size,
+                    config,
+                )
+                logits = model(
+                    batch["src"],
+                    batch["src_lengths"],
+                    batch["tgt_in"],
+                )
+                self.assertEqual(
+                    tuple(logits.shape),
+                    (2, batch["tgt_in"].shape[1], processed.tgt_vocab_size),
+                )
+                self.assertTrue(torch.isfinite(logits).all())
+                loss = F.cross_entropy(
+                    logits.reshape(-1, logits.size(-1)),
+                    batch["tgt_out"].reshape(-1),
+                    ignore_index=PAD_ID,
+                )
+                loss.backward()
+                prediction = model.generate(
+                    batch["src"], batch["src_lengths"], max_len=4
+                )
+                self.assertEqual(prediction.shape[0], 2)
+
+        local_config = replace(base_config, attention="local_p")
         with self.assertRaises(NotImplementedError):
             LuongNMT(12, 12, local_config)
 
@@ -304,18 +403,6 @@ class ModelStubTests(unittest.TestCase):
             AttentionalDecoder(
                 12, 8, 8, 2, attention="global", score="dot", input_feeding=True
             )
-
-    def test_score_functions_raise(self) -> None:
-        h_t = torch.zeros(2, 4)
-        source_h = torch.zeros(2, 3, 4)
-        with self.assertRaises(NotImplementedError):
-            score_dot(h_t, source_h)
-        with self.assertRaises(NotImplementedError):
-            score_general(h_t, source_h, torch.zeros(4, 4))
-        with self.assertRaises(NotImplementedError):
-            score_concat(h_t, source_h, torch.zeros(4, 8), torch.zeros(4))
-        with self.assertRaises(NotImplementedError):
-            score_location(h_t, 3, torch.zeros(3, 4))
 
 
 if __name__ == "__main__":
