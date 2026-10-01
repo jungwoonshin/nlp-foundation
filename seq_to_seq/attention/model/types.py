@@ -14,7 +14,7 @@ class AttentionOutput:
     """Global or local attention result at one decoder step.
 
     context: (batch, hidden) weighted source summary c_t
-    weights: (batch, source_len) alignment probabilities (padded positions 0)
+    weights: (batch, source_len), zero outside valid positions; empty rows sum to 0
     p_t: (batch,) local predicted/monotonic centers, or None for global attention
     """
 

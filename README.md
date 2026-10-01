@@ -32,8 +32,11 @@ that stage. `python prepare.py all` downloads or verifies every dataset.
 
 Seq2seq foundation models train on a synthetic reverse-sequence task (no
 download). The Luong model implements dot, general, concat, and location-based
-global attention with input feeding; local-attention variants remain explicit
-stubs.
+global attention with input feeding, plus local-monotonic (`local_m`) attention
+with general scoring. For local-m, `window_size` is the radius D, so the window
+contains up to `2 * D + 1` source positions. Windows beyond the source return
+zero context and weights. Predictive local attention (`local_p`) remains an
+explicit stub.
 
 ## Data
 

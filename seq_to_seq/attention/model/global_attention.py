@@ -13,6 +13,7 @@ class GlobalAttention(nn.Module):
     Content scores compare the current decoder state with every encoder state.
     The location score projects the decoder state to a fixed source-position
     capacity. PAD positions are masked before normalizing the scores.
+    Rows with no valid source positions return zero weights and context.
     """
 
     def __init__(
@@ -156,13 +157,17 @@ class GlobalAttention(nn.Module):
 
         attention_scores = score_function(decoder_hidden, encoder_outputs)
         lengths = src_lengths.to(device=decoder_hidden.device)
-        if bool((lengths > source_len).any()):
+        if lengths.shape != (decoder_hidden.size(0),):
+            raise ValueError("src_lengths must have shape (batch,)")
+        if bool(((lengths < 0) | (lengths > source_len)).any()):
             raise ValueError(
-                f"src_lengths cannot exceed padded source length {source_len}"
+                f"src_lengths must be between 0 and padded source length {source_len}"
             )
         positions = torch.arange(source_len, device=decoder_hidden.device)
         padding_mask = positions.unsqueeze(0) >= lengths.unsqueeze(1)
         masked_scores = attention_scores.masked_fill(padding_mask, -torch.inf)
-        weights = self.softmax(masked_scores)
+        # Avoid softmax over an all--inf row, including empty local windows.
+        masked_scores = masked_scores.masked_fill(lengths.unsqueeze(1) == 0, 0.0)
+        weights = self.softmax(masked_scores).masked_fill(padding_mask, 0.0)
         context = torch.bmm(weights.unsqueeze(1), encoder_outputs).squeeze(1)
         return AttentionOutput(context=context, weights=weights)
