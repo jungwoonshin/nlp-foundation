@@ -354,7 +354,7 @@ class AttentionModelTests(unittest.TestCase):
         self.assertGreaterEqual(prediction.shape[1], 1)
         self.assertLessEqual(prediction.shape[1], 4)
 
-    def test_luong_nmt_supports_all_global_scores_and_rejects_local_attention(self) -> None:
+    def test_luong_nmt_supports_all_global_scores_and_rejects_local_p(self) -> None:
         base_config = LuongConfig.smoke()
         processed = smoke_parallel(base_config)
         batch = next(iter(processed.dataloader(2, shuffle=False)))
@@ -398,7 +398,7 @@ class ModelStubTests(unittest.TestCase):
         with self.assertRaises(NotImplementedError):
             StackedLSTMEncoder(12, 8, 8, 2)
         with self.assertRaises(NotImplementedError):
-            LocalAttention(8, "general", predictive=True)
+            LocalAttention(8, "local_p")
         with self.assertRaises(NotImplementedError):
             AttentionalDecoder(
                 12, 8, 8, 2, attention="global", score="dot", input_feeding=True
