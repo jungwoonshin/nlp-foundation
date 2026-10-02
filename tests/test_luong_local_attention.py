@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import unittest
 from dataclasses import replace
+from unittest import mock
 
 import torch
 from torch.nn import functional as F
 
 from seq_to_seq.attention.config import LuongConfig
+from seq_to_seq.attention.model.global_attention import GlobalAttention
 from seq_to_seq.attention.model.local_attention import LocalAttention
 from seq_to_seq.attention.model.nmt import LuongNMT
+from seq_to_seq.attention.model.types import AttentionOutput
 
 
 def reference_attention(
@@ -114,8 +117,8 @@ class LocalAttentionTests(unittest.TestCase):
                 self.assertEqual(encoder.grad[1].count_nonzero().item(), 0)
 
     def test_rejects_unsupported_kind_and_invalid_window_inputs(self) -> None:
-        with self.assertRaisesRegex(NotImplementedError, "Only local_m"):
-            LocalAttention(3, "local_p")
+        with self.assertRaisesRegex(NotImplementedError, "Only local_m and local_p"):
+            LocalAttention(3, "global")
         with self.assertRaisesRegex(ValueError, "window_size"):
             LocalAttention(3, "local_m", window_size=0)
         attention = LocalAttention(3, "local_m")
@@ -174,15 +177,156 @@ class LocalAttentionNMTTests(unittest.TestCase):
                 finally:
                     handle.remove()
 
+    def test_local_p_construction_and_step_dispatch(self) -> None:
+        config = replace(
+            LuongConfig.smoke(), attention="local_p", score="general",
+            hidden_size=3, embed_dim=3, window_size=2,
+        )
+        model = LuongNMT(16, 16, config)
+        attention = model.attention
+        self.assertIsInstance(attention, LocalAttention)
+        self.assertEqual(attention.attention_kind, "local_p")
+        self.assertEqual(attention.weight_p.weight.shape, (3, 3))
+        self.assertEqual(attention.weight_va.weight.shape, (1, 3))
+        self.assertTrue(attention.gaussian_attention.is_gaussian)
+        self.assertEqual(attention.gaussian_attention.sigma, 1.0)
+
+        decoder = torch.zeros(2, 3)
+        encoder = torch.zeros(2, 5, 3)
+        lengths = torch.tensor([5, 3])
+        output = AttentionOutput(
+            context=torch.zeros(2, 3), weights=torch.zeros(2, 5),
+            p_t=torch.tensor([2.5, 1.5]),
+        )
+        # Isolate the NMT routing contract from attention arithmetic.
+        with mock.patch.object(attention, "forward", return_value=output) as forward:
+            attentional, result = model._attend(decoder, encoder, lengths, step=4)
+        forward.assert_called_once_with(decoder, encoder, lengths, step=4)
+        self.assertIs(result, output)
+        self.assertEqual(attentional.shape, (2, 3))
+
     def test_rejects_unimplemented_local_combinations(self) -> None:
-        for score in ("dot", "concat", "location"):
-            with self.subTest(score=score):
-                config = replace(LuongConfig.smoke(), attention="local_m", score=score)
-                with self.assertRaisesRegex(NotImplementedError, "only general"):
-                    LuongNMT(16, 16, config)
-        config = replace(LuongConfig.smoke(), attention="local_p", score="general")
-        with self.assertRaisesRegex(NotImplementedError, "local_p"):
-            LuongNMT(16, 16, config)
+        for kind in ("local_m", "local_p"):
+            for score in ("dot", "concat", "location"):
+                with self.subTest(kind=kind, score=score):
+                    config = replace(LuongConfig.smoke(), attention=kind, score=score)
+                    with self.assertRaisesRegex(NotImplementedError, "only general"):
+                        LuongNMT(16, 16, config)
+
+
+class PredictiveAttentionTests(unittest.TestCase):
+    def test_gaussian_matches_equation_with_batched_centers_and_source_offset(self) -> None:
+        attention = GlobalAttention(2, "general", 5, is_gaussian=True).double()
+        with torch.no_grad():
+            attention.weight_a.weight.copy_(torch.tensor([[0.2, -0.3], [0.7, 0.1]]))
+        decoder = torch.tensor([[0.3, -0.4], [-0.2, 0.5]], dtype=torch.double)
+        encoder = torch.arange(16, dtype=torch.double).reshape(2, 4, 2) / 10
+        centers = torch.tensor([0.0, 3.5], dtype=torch.double, requires_grad=True)
+        lengths = torch.tensor([4, 2])
+        actual = attention(decoder, encoder, lengths, centers, source_start=2)
+        expected_rows = []
+        for b, length in enumerate(lengths.tolist()):
+            scores = torch.stack([
+                decoder[b] @ attention.weight_a.weight @ encoder[b, s]
+                for s in range(length)
+            ])
+            distances = torch.arange(2, 2 + length, dtype=torch.double) - centers[b]
+            gaussian = torch.exp(-distances.square() / 2)
+            expected_rows.append(F.pad(scores.softmax(0) * gaussian, (0, 4 - length)))
+        expected = torch.stack(expected_rows)
+        torch.testing.assert_close(actual.weights, expected)
+        torch.testing.assert_close(actual.context, torch.einsum("bs,bsh->bh", expected, encoder))
+        self.assertTrue((actual.weights.sum(-1) < 1).all())
+        actual_gradient = torch.autograd.grad(actual.context.sum(), centers, retain_graph=True)[0]
+        expected_gradient = torch.autograd.grad((expected.unsqueeze(-1) * encoder).sum(), centers)[0]
+        torch.testing.assert_close(actual_gradient, expected_gradient)
+        self.assertTrue((actual_gradient.abs() > 0).all())
+
+    def test_gaussian_handles_empty_sources_and_requires_centers(self) -> None:
+        attention = GlobalAttention(2, "general", 3, is_gaussian=True)
+        decoder, encoder = torch.zeros(2, 2), torch.zeros(2, 0, 2)
+        result = attention(decoder, encoder, torch.zeros(2, dtype=torch.long), torch.zeros(2))
+        self.assertEqual(result.weights.shape, (2, 0))
+        torch.testing.assert_close(result.context, torch.zeros(2, 2))
+        with self.assertRaisesRegex(ValueError, "requires p_t"):
+            attention(decoder, encoder, torch.zeros(2, dtype=torch.long))
+        with self.assertRaisesRegex(ValueError, "shape"):
+            attention(decoder, encoder, torch.zeros(2, dtype=torch.long), torch.zeros(2, 1))
+        with self.assertRaisesRegex(ValueError, "max_source_length"):
+            GlobalAttention(2, "general", 1, is_gaussian=True)
+
+    def test_local_p_windows_match_reference_and_preserve_centers_and_hooks(self) -> None:
+        devices = ["cpu"] + (["cuda"] if torch.cuda.is_available() else [])
+        for device in devices:
+            for batch in (1, 3):
+                with self.subTest(device=device, batch=batch):
+                    attention = LocalAttention(2, "local_p", window_size=1).to(device)
+                    with torch.no_grad():
+                        attention.weight_p.weight.zero_()
+                        attention.weight_va.weight.fill_(1)
+                    decoder = torch.tensor([[0.3, -0.4]] * batch, device=device, requires_grad=True)
+                    encoder = torch.arange(batch * 14, device=device, dtype=torch.float32).reshape(batch, 7, 2) / 10
+                    encoder.requires_grad_()
+                    lengths = torch.tensor([7, 3, 0])[:batch]
+                    calls = []
+                    handle = attention.gaussian_attention.register_forward_hook(
+                        lambda module, args, output: calls.append(args[1].size(1))
+                    )
+                    try:
+                        actual = attention(decoder, encoder, lengths, step=0)
+                    finally:
+                        handle.remove()
+                    torch.testing.assert_close(actual.p_t, lengths.to(device) * 0.5)
+                    self.assertTrue(actual.p_t.is_floating_point())
+                    self.assertTrue(actual.p_t.requires_grad)
+                    self.assertEqual(len(calls), batch)
+                    expected = torch.zeros(batch, 7, device=device)
+                    for b, length in enumerate(lengths.tolist()):
+                        center = length * 0.5
+                        positions = [s for s in range(length) if abs(s - center) <= 1]
+                        if positions:
+                            scores = torch.stack([
+                                decoder[b] @ attention.gaussian_attention.weight_a.weight @ encoder[b, s]
+                                for s in positions
+                            ])
+                            distances = torch.tensor(positions, device=device) - center
+                            expected[b, positions] = scores.softmax(0) * torch.exp(-distances.square() / 0.5)
+                    torch.testing.assert_close(actual.weights, expected)
+                    torch.testing.assert_close(actual.context, torch.einsum("bs,bsh->bh", expected, encoder))
+                    actual.context.square().sum().backward()
+                    self.assertTrue(torch.isfinite(attention.weight_p.weight.grad).all())
+                    if batch == 3:
+                        self.assertEqual(encoder.grad[2].count_nonzero().item(), 0)
+
+    def test_local_p_nmt_trains_and_generates_with_predictor_gradients(self) -> None:
+        for batch, input_feeding in ((1, True), (2, True), (2, False)):
+            with self.subTest(batch=batch, input_feeding=input_feeding):
+                torch.manual_seed(25)
+                config = replace(
+                    LuongConfig.smoke(), attention="local_p", score="general",
+                    hidden_size=4, embed_dim=4, window_size=2, input_feeding=input_feeding,
+                )
+                model = LuongNMT(16, 16, config)
+                source = torch.tensor([[4, 5, 6, 7, 0, 0], [8, 9, 10, 11, 12, 13]])[:batch]
+                lengths = torch.tensor([4, 6])[:batch]
+                target = torch.tensor([[1, 4, 5, 6, 7]]).expand(batch, -1)
+                optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+                predictor = model.attention.weight_va.weight
+                before = predictor.detach().clone()
+                logits = model(source, lengths, target)
+                self.assertEqual(logits.shape, (batch, 5, 16))
+                F.cross_entropy(logits.reshape(-1, 16), target.reshape(-1)).backward()
+                for parameter in (
+                    model.attention.weight_p.weight, predictor,
+                    model.attention.gaussian_attention.weight_a.weight,
+                ):
+                    self.assertTrue(torch.isfinite(parameter.grad).all())
+                    self.assertGreater(parameter.grad.abs().sum().item(), 0)
+                optimizer.step()
+                self.assertFalse(torch.equal(predictor, before))
+                with torch.no_grad():
+                    model.out.weight.zero_()
+                self.assertEqual(model.generate(source, lengths, max_len=5).shape, (batch, 5))
 
 
 if __name__ == "__main__":

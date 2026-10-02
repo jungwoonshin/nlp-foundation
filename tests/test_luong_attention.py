@@ -34,7 +34,6 @@ from seq_to_seq.attention.eval.metrics import evaluate_bleu, evaluate_exact_matc
 from seq_to_seq.attention.model.decoder import AttentionalDecoder
 from seq_to_seq.attention.model.encoder import StackedLSTMEncoder
 from seq_to_seq.attention.model.global_attention import GlobalAttention
-from seq_to_seq.attention.model.local_attention import LocalAttention
 from seq_to_seq.attention.model.nmt import LuongNMT
 from seq_to_seq.attention.training.dummy import DummyNMT
 from seq_to_seq.attention.training.loop import fit, initialize_parameters, learning_rate_for_epoch
@@ -354,7 +353,7 @@ class AttentionModelTests(unittest.TestCase):
         self.assertGreaterEqual(prediction.shape[1], 1)
         self.assertLessEqual(prediction.shape[1], 4)
 
-    def test_luong_nmt_supports_all_global_scores_and_rejects_local_p(self) -> None:
+    def test_luong_nmt_supports_all_global_scores(self) -> None:
         base_config = LuongConfig.smoke()
         processed = smoke_parallel(base_config)
         batch = next(iter(processed.dataloader(2, shuffle=False)))
@@ -388,17 +387,11 @@ class AttentionModelTests(unittest.TestCase):
                 )
                 self.assertEqual(prediction.shape[0], 2)
 
-        local_config = replace(base_config, attention="local_p")
-        with self.assertRaises(NotImplementedError):
-            LuongNMT(12, 12, local_config)
-
 
 class ModelStubTests(unittest.TestCase):
     def test_unimplemented_layers_raise(self) -> None:
         with self.assertRaises(NotImplementedError):
             StackedLSTMEncoder(12, 8, 8, 2)
-        with self.assertRaises(NotImplementedError):
-            LocalAttention(8, "local_p")
         with self.assertRaises(NotImplementedError):
             AttentionalDecoder(
                 12, 8, 8, 2, attention="global", score="dot", input_feeding=True
