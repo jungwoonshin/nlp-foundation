@@ -14,6 +14,8 @@ class GlobalAttention(nn.Module):
     The location score projects the decoder state to a fixed source-position
     capacity. PAD positions are masked before normalizing the scores.
     Rows with no valid source positions return zero weights and context.
+    Optional local-p Gaussian weights multiply the normalized alignment;
+    they are not renormalized afterward (Equation 11).
     """
 
     def __init__(
@@ -21,6 +23,7 @@ class GlobalAttention(nn.Module):
         hidden_size: int,
         score: AlignmentScore,
         max_source_length: int,
+        is_gaussian: bool = False,
     ) -> None:
         super().__init__()
         if score not in ALIGNMENT_SCORES:
@@ -34,6 +37,7 @@ class GlobalAttention(nn.Module):
         self.weight_a: nn.Linear | None = None
         self.v_a: nn.Linear | None = None
         self.activation: nn.Tanh | None = None
+        self.is_gaussian = is_gaussian
 
         if score == "general":
             self.weight_a = nn.Linear(hidden_size, hidden_size, bias=False)
@@ -44,6 +48,11 @@ class GlobalAttention(nn.Module):
         elif score == "location":
             # Equation (9): a_t = softmax(W_a h_t), without a bias term.
             self.weight_a = nn.Linear(hidden_size, max_source_length, bias=False)
+
+        if is_gaussian:
+            if max_source_length < 2:
+                raise ValueError("Gaussian attention requires max_source_length >= 2")
+            self.sigma = (max_source_length - 1) / 4.0
 
     def dot_score(
         self,
@@ -129,12 +138,16 @@ class GlobalAttention(nn.Module):
         decoder_hidden: torch.Tensor,
         encoder_outputs: torch.Tensor,
         src_lengths: torch.Tensor,
+        p_t: torch.Tensor | None = None,
+        source_start: int = 0,
     ) -> AttentionOutput:
         """Compute one decoder step of global attention.
 
         decoder_hidden: (batch, hidden)
         encoder_outputs: (batch, padded_source_len, hidden)
         src_lengths: (batch,)
+        p_t: (batch,) predicted centers in original source coordinates
+        source_start: original source index of the first encoder position
         """
         if decoder_hidden.dim() != 2:
             raise ValueError("decoder_hidden must have shape (batch, hidden)")
@@ -168,6 +181,20 @@ class GlobalAttention(nn.Module):
         masked_scores = attention_scores.masked_fill(padding_mask, -torch.inf)
         # Avoid softmax over an all--inf row, including empty local windows.
         masked_scores = masked_scores.masked_fill(lengths.unsqueeze(1) == 0, 0.0)
+
         weights = self.softmax(masked_scores).masked_fill(padding_mask, 0.0)
+        if self.is_gaussian:
+            if p_t is None:
+                raise ValueError("Gaussian attention requires p_t")
+            if p_t.shape != (decoder_hidden.size(0),):
+                raise ValueError("p_t must have shape (batch,)")
+            centers = p_t.to(device=decoder_hidden.device, dtype=decoder_hidden.dtype)
+            source_positions = positions + source_start
+            gaussian_weights = torch.exp(
+                -((source_positions.unsqueeze(0) - centers.unsqueeze(1)) ** 2)
+                / (2 * self.sigma**2)
+            )
+            weights = weights * gaussian_weights
+
         context = torch.bmm(weights.unsqueeze(1), encoder_outputs).squeeze(1)
         return AttentionOutput(context=context, weights=weights)

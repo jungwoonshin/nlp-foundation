@@ -35,8 +35,9 @@ download). The Luong model implements dot, general, concat, and location-based
 global attention with input feeding, plus local-monotonic (`local_m`) attention
 with general scoring. For local-m, `window_size` is the radius D, so the window
 contains up to `2 * D + 1` source positions. Windows beyond the source return
-zero context and weights. Predictive local attention (`local_p`) remains an
-explicit stub.
+zero context and weights. Predictive local attention (`local_p`) uses general
+scoring, predicts a separate real-valued center per example, and multiplies
+window alignments by a Gaussian without subsequent renormalization (Equation 11).
 
 ## Data
 

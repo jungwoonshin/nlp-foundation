@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import torch
 from torch import nn
 
@@ -9,13 +11,14 @@ from seq_to_seq.attention.model.types import AttentionOutput
 
 
 class LocalAttention(nn.Module):
-    """Monotonic local attention with general scoring (Luong et al. 2015, §3.2).
+    """Local attention with general scoring (Luong et al. 2015, §3.2).
 
-    The center is p_t = t, with an inclusive window [t - D, t + D].
+    For local-m, the center is p_t = t, with an inclusive window [t - D, t + D].
     window_size is the radius D (paper D=10), not the full window width.
-    Scores are normalized over valid source positions inside the window.
+    Content scores are normalized over valid positions inside the window.
+    Local-p then multiplies them by a Gaussian centered on its prediction.
     Empty windows return zero context and weights, without shifting p_t.
-    Predictive local-p attention is not implemented.
+    Local-p predicts a separate floating-point center for each example.
     """
 
     def __init__(
@@ -26,20 +29,34 @@ class LocalAttention(nn.Module):
         window_size: int = 10,
     ) -> None:
         super().__init__()
-        if attention_kind != "local_m":
-            raise NotImplementedError("Only local_m attention is implemented.")
+        if attention_kind not in ("local_m", "local_p"):
+            raise NotImplementedError("Only local_m and local_p attention are supported.")
         if window_size < 1:
             raise ValueError("window_size must be >= 1")
+        self.attention_kind = attention_kind
         self.hidden_size = hidden_size
         self.window_size = window_size
         self.global_attention = GlobalAttention(
             hidden_size, score="general", max_source_length=2 * window_size + 1
         )
+        if attention_kind == "local_p":
+            self.weight_p = nn.Linear(hidden_size, hidden_size, bias=False)
+            self.weight_va = nn.Linear(hidden_size, 1, bias=False)
+            self.gaussian_attention = GlobalAttention(
+                hidden_size, score="general", max_source_length=2 * window_size + 1, is_gaussian=True
+            )
 
     def monotonic_p_t(self, time_point: int) -> int:
         if time_point < 0:
             raise ValueError("step must be >= 0")
         return time_point
+
+    def predictive_p_t(self, decoder_hidden: torch.Tensor, src_lengths: torch.Tensor) -> torch.Tensor:
+        # decoder_hidden: (batch, hidden)
+        activated = torch.tanh(self.weight_p(decoder_hidden))  # (batch, hidden)
+        probability = torch.sigmoid(self.weight_va(activated)).squeeze(-1)  # (B,)
+        p_t = src_lengths.to(decoder_hidden.device) * probability  # (B,)
+        return p_t
 
     def get_start_end(self, center_point: int, source_len: int) -> tuple[int, int]:
         """Return shared, clipped [start, end) bounds in the padded source."""
@@ -54,7 +71,7 @@ class LocalAttention(nn.Module):
         src_lengths: torch.Tensor,
         step: int,
     ) -> AttentionOutput:
-        """step is the 0-based decoder timestep used by local-m (p_t = t)."""
+        """step is the 0-based timestep used by local-m; local-p predicts p_t."""
 
         if encoder_outputs.dim() != 3:
             raise ValueError("encoder_outputs must have shape (batch, source_len, hidden)")
@@ -64,6 +81,24 @@ class LocalAttention(nn.Module):
         if bool(((src_lengths < 0) | (src_lengths > source_len)).any()):
             raise ValueError(
                 f"src_lengths must be between 0 and padded source length {source_len}"
+            )
+
+        if self.attention_kind == "local_p":
+            p_t = self.predictive_p_t(decoder_hidden, src_lengths)
+            contexts, weights = [], []
+            for b, center in enumerate(p_t):
+                position = center.detach().item()
+                start = max(0, math.ceil(position - self.window_size))
+                end = min(int(src_lengths[b]), math.floor(position + self.window_size) + 1)
+                result = self.gaussian_attention(
+                    decoder_hidden[b:b + 1], encoder_outputs[b:b + 1, start:end],
+                    src_lengths.new_tensor([end - start]), center.reshape(1),
+                    source_start=start,
+                )
+                contexts.append(result.context)
+                weights.append(torch.nn.functional.pad(result.weights, (start, source_len - end)))
+            return AttentionOutput(
+                context=torch.cat(contexts), weights=torch.cat(weights), p_t=p_t
             )
 
         p_t = self.monotonic_p_t(step)

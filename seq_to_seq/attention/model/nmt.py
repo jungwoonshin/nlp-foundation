@@ -12,7 +12,9 @@ from seq_to_seq.attention.model.types import AttentionOutput, LSTMState
 
 
 class LuongNMT(nn.Module):
-    """Encoder-decoder NMT with global or local-m attention (Luong et al. 2015).
+    """Encoder-decoder NMT with global or local attention (Luong et al. 2015).
+
+    Local-p predicts per-example centers and applies Gaussian window weights.
 
     Training (teacher forcing):
       forward(src, src_lengths, tgt_in) -> logits (batch, tgt_len, tgt_vocab)
@@ -32,13 +34,9 @@ class LuongNMT(nn.Module):
     ) -> None:
         super().__init__()
         config.validate()
-        if config.attention == "local_p":
+        if config.attention in ("local_m", "local_p") and config.score != "general":
             raise NotImplementedError(
-                "local_p attention is not implemented."
-            )
-        if config.attention == "local_m" and config.score != "general":
-            raise NotImplementedError(
-                "local_m attention currently supports only general scoring."
+                f"{config.attention} attention currently supports only general scoring."
             )
         embed_dim = config.embed_dim
         hidden_size = config.hidden_size
@@ -76,7 +74,7 @@ class LuongNMT(nn.Module):
                 score=config.score,
                 max_source_length=max_source_length,
             )
-        elif config.attention == "local_m":
+        elif config.attention in ("local_m", "local_p"):
             self.attention = LocalAttention(
                 hidden_size=hidden_size,
                 attention_kind=config.attention,
@@ -118,7 +116,7 @@ class LuongNMT(nn.Module):
         src_lengths: torch.Tensor,
         step: int,
     ) -> tuple[torch.Tensor, AttentionOutput]:
-        if self.config.attention == "local_m":
+        if self.config.attention in ("local_m", "local_p"):
             attention = self.attention(
                 decoder_hidden, encoder_outputs, src_lengths, step=step
             )
