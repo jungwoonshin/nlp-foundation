@@ -215,6 +215,50 @@ class LocalAttentionNMTTests(unittest.TestCase):
 
 
 class PredictiveAttentionTests(unittest.TestCase):
+    def test_local_p_window_does_not_round_a_fractional_center_to_an_integer(self) -> None:
+        attention = LocalAttention(2, "local_p", window_size=10)
+        center = torch.nextafter(torch.tensor([2.0]), torch.tensor([0.0]))
+        with mock.patch.object(attention, "predictive_p_t", return_value=center):
+            result = attention(torch.zeros(1, 2), torch.ones(1, 20, 2), torch.tensor([20]), step=0)
+        self.assertGreater(result.weights[0, 11].item(), 0)
+        self.assertEqual(result.weights[0, 12].item(), 0)
+
+    def test_batched_local_p_matches_separate_examples_and_gradients(self) -> None:
+        for source_len in (0, 1, 7):
+            with self.subTest(source_len=source_len):
+                torch.manual_seed(41)
+                attention = LocalAttention(3, "local_p", window_size=2).double()
+                reference = LocalAttention(3, "local_p", window_size=2).double()
+                reference.load_state_dict(attention.state_dict())
+                decoder = torch.randn(4, 3, dtype=torch.double, requires_grad=True)
+                encoder = torch.randn(4, source_len, 3, dtype=torch.double, requires_grad=True)
+                lengths = torch.tensor([source_len, min(3, source_len), min(1, source_len), 0])
+                ref_decoder = decoder.detach().clone().requires_grad_()
+                ref_encoder = encoder.detach().clone().requires_grad_()
+                actual = attention(decoder, encoder, lengths, step=0)
+                centers = reference.predictive_p_t(ref_decoder, lengths)
+                contexts, weights = [], []
+                for b, center in enumerate(centers):
+                    positions = [s for s in range(int(lengths[b])) if abs(s - center.item()) <= 2]
+                    start = positions[0] if positions else 0
+                    end = positions[-1] + 1 if positions else 0
+                    result = reference.gaussian_attention(
+                        ref_decoder[b:b + 1], ref_encoder[b:b + 1, start:end],
+                        lengths.new_tensor([end - start]), center.reshape(1), source_start=start,
+                    )
+                    contexts.append(result.context)
+                    weights.append(F.pad(result.weights, (start, source_len - end)))
+                ref_context, ref_weights = torch.cat(contexts), torch.cat(weights)
+                torch.testing.assert_close(actual.context, ref_context)
+                torch.testing.assert_close(actual.weights, ref_weights)
+                torch.testing.assert_close(actual.p_t, centers)
+                (actual.context.square().sum() + actual.weights.square().sum()).backward()
+                (ref_context.square().sum() + ref_weights.square().sum()).backward()
+                for value, expected in [(decoder, ref_decoder), (encoder, ref_encoder)]:
+                    torch.testing.assert_close(value.grad, expected.grad)
+                for name, parameter in attention.named_parameters():
+                    torch.testing.assert_close(parameter.grad, dict(reference.named_parameters())[name].grad)
+
     def test_gaussian_matches_equation_with_batched_centers_and_source_offset(self) -> None:
         attention = GlobalAttention(2, "general", 5, is_gaussian=True).double()
         with torch.no_grad():
@@ -279,7 +323,8 @@ class PredictiveAttentionTests(unittest.TestCase):
                     torch.testing.assert_close(actual.p_t, lengths.to(device) * 0.5)
                     self.assertTrue(actual.p_t.is_floating_point())
                     self.assertTrue(actual.p_t.requires_grad)
-                    self.assertEqual(len(calls), batch)
+                    self.assertEqual(len(calls), 1)
+                    self.assertLessEqual(calls[0], 3)
                     expected = torch.zeros(batch, 7, device=device)
                     for b, length in enumerate(lengths.tolist()):
                         center = length * 0.5
