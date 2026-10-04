@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import math
-
 import torch
 from torch import nn
 
@@ -85,20 +83,31 @@ class LocalAttention(nn.Module):
 
         if self.attention_kind == "local_p":
             p_t = self.predictive_p_t(decoder_hidden, src_lengths)
-            contexts, weights = [], []
-            for b, center in enumerate(p_t):
-                position = center.detach().item()
-                start = max(0, math.ceil(position - self.window_size))
-                end = min(int(src_lengths[b]), math.floor(position + self.window_size) + 1)
-                result = self.gaussian_attention(
-                    decoder_hidden[b:b + 1], encoder_outputs[b:b + 1, start:end],
-                    src_lengths.new_tensor([end - start]), center.reshape(1),
-                    source_start=start,
-                )
-                contexts.append(result.context)
-                weights.append(torch.nn.functional.pad(result.weights, (start, source_len - end)))
+            if source_len == 0:
+                result = self.gaussian_attention(decoder_hidden, encoder_outputs, src_lengths, p_t)
+                return AttentionOutput(context=result.context, weights=result.weights, p_t=p_t)
+            lengths = src_lengths.to(encoder_outputs.device)
+            # Round before integer offsets to preserve boundaries near integers.
+            start = (p_t.detach().ceil().long() - self.window_size).clamp(0, source_len)
+            end = torch.minimum(
+                p_t.detach().floor().long() + self.window_size + 1, lengths
+            )
+            local_lengths = (end - start).clamp(min=0)
+            offsets = torch.arange(
+                min(source_len, 2 * self.window_size + 1), device=encoder_outputs.device
+            )
+            indices = (start.unsqueeze(1) + offsets).clamp(max=source_len - 1)
+            local_encoder = encoder_outputs.gather(
+                1, indices.unsqueeze(-1).expand(-1, -1, self.hidden_size)
+            )
+            result = self.gaussian_attention(
+                decoder_hidden, local_encoder, local_lengths, p_t, source_start=start.unsqueeze(1)
+            )
+            weights = encoder_outputs.new_zeros(batch, source_len).scatter_add(
+                1, indices, result.weights
+            )
             return AttentionOutput(
-                context=torch.cat(contexts), weights=torch.cat(weights), p_t=p_t
+                context=result.context, weights=weights, p_t=p_t
             )
 
         p_t = self.monotonic_p_t(step)

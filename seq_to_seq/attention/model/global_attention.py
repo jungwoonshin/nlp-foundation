@@ -139,7 +139,7 @@ class GlobalAttention(nn.Module):
         encoder_outputs: torch.Tensor,
         src_lengths: torch.Tensor,
         p_t: torch.Tensor | None = None,
-        source_start: int = 0,
+        source_start: int | torch.Tensor = 0,
     ) -> AttentionOutput:
         """Compute one decoder step of global attention.
 
@@ -147,7 +147,8 @@ class GlobalAttention(nn.Module):
         encoder_outputs: (batch, padded_source_len, hidden)
         src_lengths: (batch,)
         p_t: (batch,) predicted centers in original source coordinates
-        source_start: original source index of the first encoder position
+        source_start: original source index of the first encoder position,
+            shared integer or per-example tensor of shape (batch, 1)
         """
         if decoder_hidden.dim() != 2:
             raise ValueError("decoder_hidden must have shape (batch, hidden)")
@@ -189,9 +190,9 @@ class GlobalAttention(nn.Module):
             if p_t.shape != (decoder_hidden.size(0),):
                 raise ValueError("p_t must have shape (batch,)")
             centers = p_t.to(device=decoder_hidden.device, dtype=decoder_hidden.dtype)
-            source_positions = positions + source_start
+            source_positions = positions.unsqueeze(0) + source_start
             gaussian_weights = torch.exp(
-                -((source_positions.unsqueeze(0) - centers.unsqueeze(1)) ** 2)
+                -((source_positions - centers.unsqueeze(1)) ** 2)
                 / (2 * self.sigma**2)
             )
             weights = weights * gaussian_weights
