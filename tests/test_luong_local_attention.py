@@ -26,7 +26,8 @@ def reference_attention(
     weights = encoder.new_zeros(encoder.shape[:2])
     contexts = []
     for b, length in enumerate(lengths.tolist()):
-        positions = [s for s in range(length) if abs(s - step) <= radius]
+        center = min(step, max(length - 1, 0))
+        positions = [s for s in range(length) if abs(s - center) <= radius]
         if not positions:
             # Keep zero gradients defined even when every window is empty.
             contexts.append(
@@ -77,25 +78,25 @@ class LocalAttentionTests(unittest.TestCase):
                                 )
                                 torch.testing.assert_close(result.weights, expected_weights)
                                 torch.testing.assert_close(result.context, expected_context)
-                                self.assertEqual(result.p_t.tolist(), [step] * batch_size)
+                                self.assertEqual(result.p_t.tolist(), [min(step, n - 1) for n in lengths.tolist()])
                                 self.assertEqual(result.p_t.device, encoder.device)
                                 self.assertEqual(result.weights.shape, (batch_size, 7))
                                 self.assertEqual(result.context.shape, (batch_size, 3))
                                 self.assertLessEqual(observed_widths[-1], 2 * radius + 1)
                                 self.assertTrue(torch.isfinite(result.context).all())
                         self.assertEqual(len(observed_widths), 5)
-                        self.assertEqual(observed_widths[-1], 0)
+                        self.assertEqual(observed_widths[-1], min(7, 2 * radius + 1))
                     finally:
                         handle.remove()
 
-    def test_gradients_match_reference_for_mixed_and_fully_empty_windows(self) -> None:
+    def test_gradients_match_reference_for_clamped_and_empty_sources(self) -> None:
         for step in (4, 10):
             with self.subTest(step=step):
                 torch.manual_seed(12)
                 attention = LocalAttention(3, "local_m", window_size=1).double()
                 decoder = torch.randn(2, 3, dtype=torch.double, requires_grad=True)
                 encoder = torch.randn(2, 7, 3, dtype=torch.double, requires_grad=True)
-                lengths = torch.tensor([7, 3])
+                lengths = torch.tensor([7, 0])
                 ref_decoder = decoder.detach().clone().requires_grad_()
                 ref_encoder = encoder.detach().clone().requires_grad_()
                 weight = attention.global_attention.weight_a.weight
@@ -113,7 +114,7 @@ class LocalAttentionTests(unittest.TestCase):
                     self.assertIsNotNone(value.grad)
                     self.assertTrue(torch.isfinite(value.grad).all())
                     torch.testing.assert_close(value.grad, reference.grad)
-                # The second example has no valid positions at either step.
+                # The empty source contributes no encoder gradient.
                 self.assertEqual(encoder.grad[1].count_nonzero().item(), 0)
 
     def test_rejects_unsupported_kind_and_invalid_window_inputs(self) -> None:
@@ -159,7 +160,8 @@ class LocalAttentionNMTTests(unittest.TestCase):
                     logits = model(source, lengths, target)
                     self.assertEqual(logits.shape, (batch_size, 9, 16))
                     self.assertTrue(torch.isfinite(logits).all())
-                    self.assertEqual(observed_steps, [[t] * batch_size for t in range(9)])
+                    expected_steps = [[min(t, n - 1) for n in lengths.tolist()] for t in range(9)]
+                    self.assertEqual(observed_steps, expected_steps)
                     loss = F.cross_entropy(logits.reshape(-1, 16), target.reshape(-1))
                     loss.backward()
                     self.assertTrue(torch.isfinite(weight.grad).all())
@@ -173,7 +175,7 @@ class LocalAttentionNMTTests(unittest.TestCase):
                         model.out.weight.zero_()
                     prediction = model.generate(source, lengths, max_len=9)
                     self.assertEqual(prediction.shape, (batch_size, 9))
-                    self.assertEqual(observed_steps, [[t] * batch_size for t in range(9)])
+                    self.assertEqual(observed_steps, expected_steps)
                 finally:
                     handle.remove()
 
@@ -239,7 +241,7 @@ class PredictiveAttentionTests(unittest.TestCase):
                 centers = reference.predictive_p_t(ref_decoder, lengths)
                 contexts, weights = [], []
                 for b, center in enumerate(centers):
-                    positions = [s for s in range(int(lengths[b])) if abs(s - center.item()) <= 2]
+                    positions = [s for s in range(int(lengths[b])) if abs(s - int(center.item())) <= 2]
                     start = positions[0] if positions else 0
                     end = positions[-1] + 1 if positions else 0
                     result = reference.gaussian_attention(
@@ -328,7 +330,7 @@ class PredictiveAttentionTests(unittest.TestCase):
                     expected = torch.zeros(batch, 7, device=device)
                     for b, length in enumerate(lengths.tolist()):
                         center = length * 0.5
-                        positions = [s for s in range(length) if abs(s - center) <= 1]
+                        positions = [s for s in range(length) if abs(s - int(center)) <= 1]
                         if positions:
                             scores = torch.stack([
                                 decoder[b] @ attention.gaussian_attention.weight_a.weight @ encoder[b, s]
