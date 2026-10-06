@@ -29,7 +29,7 @@ def luong_attention(*, smoke: bool = False) -> dict[str, float]:
             processed.tgt_vocab_size,
             config,
         ).to(chosen)
-        initialize_parameters(model, config.init_range)
+        initialize_parameters(model, config.init_range, seed=config.seed)
         return fit(
             model,
             processed,
@@ -65,7 +65,7 @@ def luong_attention(*, smoke: bool = False) -> dict[str, float]:
     log_corpus(train)
     print(f"dev examples: {len(dev.dataset):,}")
     model = LuongNMT(train.src_vocab_size, train.tgt_vocab_size, config).to(chosen)
-    initialize_parameters(model, config.init_range)
+    initialize_parameters(model, config.init_range, seed=config.seed)
     return fit(model, train, chosen, config, eval_processed=dev, eval_bleu=True)
 
 

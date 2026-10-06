@@ -40,7 +40,7 @@ def run(*, smoke: bool = False, checkpoint: Path | None = None) -> dict[str, flo
             processed.tgt_vocab_size,
             config,
         ).to(chosen)
-        initialize_parameters(model, config.init_range)
+        initialize_parameters(model, config.init_range, seed=config.seed)
         metrics = {
             "perplexity": evaluate_perplexity(model, processed, chosen, batch_size=config.batch_size),
             "bleu": evaluate_bleu(

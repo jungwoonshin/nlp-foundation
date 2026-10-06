@@ -79,6 +79,7 @@ class LuongNMT(nn.Module):
                 hidden_size=hidden_size,
                 attention_kind=config.attention,
                 window_size=config.window_size,
+                reverse_source=config.reverse_source,
             )
         else:
             raise NotImplementedError(

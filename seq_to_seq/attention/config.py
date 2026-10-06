@@ -39,11 +39,13 @@ class LuongConfig:
     lr_decay_start: int = 5
     grad_clip: float = 5.0
     init_range: float = 0.1
-    seed: int = 42
+    seed: int = 0  # Official default: clock-based; a positive value is reproducible.
     max_train_examples: int | None = None
     max_eval_examples: int | None = None
 
     def validate(self) -> None:
+        if self.seed < 0:
+            raise ValueError("seed must be >= 0")
         if self.attention not in ATTENTION_KINDS:
             raise ValueError(f"attention must be one of {ATTENTION_KINDS}")
         if self.score not in ALIGNMENT_SCORES:

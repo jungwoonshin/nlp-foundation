@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Sampler
 
 from seq_to_seq.attention.config import LuongConfig
 from seq_to_seq.attention.data.corpus import (
@@ -85,6 +85,29 @@ def pad_collate(
     }
 
 
+class LengthSortedBatchSampler(Sampler[list[int]]):
+    """Sort each 100-batch chunk by target length, then shuffle whole batches."""
+
+    def __init__(self, dataset: ParallelDataset, batch_size: int) -> None:
+        if batch_size < 1:
+            raise ValueError("batch_size must be >= 1")
+        self.dataset, self.batch_size = dataset, batch_size
+
+    def __len__(self) -> int:
+        return (len(self.dataset) + self.batch_size - 1) // self.batch_size
+
+    def __iter__(self):
+        chunk_size = self.batch_size * 100
+        for start in range(0, len(self.dataset), chunk_size):
+            indices = sorted(
+                range(start, min(start + chunk_size, len(self.dataset))),
+                key=lambda i: len(self.dataset.targets[i]),
+            )
+            batches = [indices[i:i + self.batch_size] for i in range(0, len(indices), self.batch_size)]
+            for i in torch.randperm(len(batches)).tolist():
+                yield batches[i]
+
+
 @dataclass
 class ProcessedParallel:
     dataset: ParallelDataset
@@ -107,6 +130,11 @@ class ProcessedParallel:
         shuffle: bool = True,
         num_workers: int = 0,
     ) -> DataLoader:
+        if shuffle:
+            return DataLoader(
+                self.dataset, batch_sampler=LengthSortedBatchSampler(self.dataset, batch_size),
+                num_workers=num_workers, collate_fn=pad_collate,
+            )
         return DataLoader(
             self.dataset,
             batch_size=batch_size,
@@ -153,6 +181,7 @@ def process_pairs(
         pairs = pairs[:max_examples]
     if not pairs:
         raise ValueError("no parallel pairs left after filtering")
+    tgt_vocab = tgt_vocab.for_target()
     sources, targets, src_text, tgt_text = _encode_pairs(
         pairs,
         src_vocab,

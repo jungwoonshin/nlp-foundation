@@ -11,11 +11,12 @@ from seq_to_seq.attention.model.types import AttentionOutput
 class LocalAttention(nn.Module):
     """Local attention with general scoring (Luong et al. 2015, §3.2).
 
-    For local-m, the center is p_t = t, with an inclusive window [t - D, t + D].
+    Centers use zero-based original-source coordinates. Local-m clamps p_t=t
+    to the final source token. Local-p anchors its 2D+1 window at floor(p_t).
     window_size is the radius D (paper D=10), not the full window width.
     Content scores are normalized over valid positions inside the window.
     Local-p then multiplies them by a Gaussian centered on its prediction.
-    Empty windows return zero context and weights, without shifting p_t.
+    Empty sources return zero context and weights.
     Local-p predicts a separate floating-point center for each example.
     """
 
@@ -25,6 +26,7 @@ class LocalAttention(nn.Module):
         attention_kind: AttentionKind,
         *,
         window_size: int = 10,
+        reverse_source: bool = False,
     ) -> None:
         super().__init__()
         if attention_kind not in ("local_m", "local_p"):
@@ -34,6 +36,7 @@ class LocalAttention(nn.Module):
         self.attention_kind = attention_kind
         self.hidden_size = hidden_size
         self.window_size = window_size
+        self.reverse_source = reverse_source
         self.global_attention = GlobalAttention(
             hidden_size, score="general", max_source_length=2 * window_size + 1
         )
@@ -81,47 +84,35 @@ class LocalAttention(nn.Module):
                 f"src_lengths must be between 0 and padded source length {source_len}"
             )
 
+        lengths = src_lengths.to(encoder_outputs.device)
         if self.attention_kind == "local_p":
             p_t = self.predictive_p_t(decoder_hidden, src_lengths)
-            if source_len == 0:
-                result = self.gaussian_attention(decoder_hidden, encoder_outputs, src_lengths, p_t)
-                return AttentionOutput(context=result.context, weights=result.weights, p_t=p_t)
-            lengths = src_lengths.to(encoder_outputs.device)
-            # Round before integer offsets to preserve boundaries near integers.
-            start = (p_t.detach().ceil().long() - self.window_size).clamp(0, source_len)
-            end = torch.minimum(
-                p_t.detach().floor().long() + self.window_size + 1, lengths
+            anchor = p_t.detach().floor().long()
+            attention = self.gaussian_attention
+        else:
+            p_t = torch.minimum(
+                torch.full_like(lengths, self.monotonic_p_t(step)), (lengths - 1).clamp(min=0)
             )
-            local_lengths = (end - start).clamp(min=0)
-            offsets = torch.arange(
-                min(source_len, 2 * self.window_size + 1), device=encoder_outputs.device
-            )
-            indices = (start.unsqueeze(1) + offsets).clamp(max=source_len - 1)
-            local_encoder = encoder_outputs.gather(
-                1, indices.unsqueeze(-1).expand(-1, -1, self.hidden_size)
-            )
-            result = self.gaussian_attention(
-                decoder_hidden, local_encoder, local_lengths, p_t, source_start=start.unsqueeze(1)
-            )
-            weights = encoder_outputs.new_zeros(batch, source_len).scatter_add(
-                1, indices, result.weights
-            )
-            return AttentionOutput(
-                context=result.context, weights=weights, p_t=p_t
-            )
-
-        p_t = self.monotonic_p_t(step)
-        start, end = self.get_start_end(p_t, source_len)
-        local_encoder = encoder_outputs[:, start:end, :]
-        local_lengths = (src_lengths - start).clamp(min=0, max=end - start)
-        local_attention = self.global_attention(
-            decoder_hidden, local_encoder, local_lengths
+            anchor = p_t
+            attention = self.global_attention
+        # Official one-based mu=L*sigmoid(...)+1 becomes zero-based p_t here.
+        centers = p_t
+        if self.reverse_source:
+            anchor = lengths - 1 - anchor
+            centers = lengths - 1 - p_t
+        if source_len == 0:
+            result = attention(decoder_hidden, encoder_outputs, lengths, centers)
+            return AttentionOutput(context=result.context, weights=result.weights, p_t=p_t)
+        start = (anchor - self.window_size).clamp(0, source_len)
+        end = torch.minimum(anchor + self.window_size + 1, lengths)
+        offsets = torch.arange(min(source_len, 2 * self.window_size + 1), device=encoder_outputs.device)
+        indices = (start.unsqueeze(1) + offsets).clamp(max=source_len - 1)
+        local_encoder = encoder_outputs.gather(
+            1, indices.unsqueeze(-1).expand(-1, -1, self.hidden_size)
         )
-        # Preserve source coordinates for callers and attention visualizations.
-        weights = torch.nn.functional.pad(
-            local_attention.weights, (start, source_len - end)
+        result = attention(
+            decoder_hidden, local_encoder, (end - start).clamp(min=0), centers,
+            source_start=start.unsqueeze(1),
         )
-        centers = torch.full((batch,), p_t, dtype=torch.long, device=encoder_outputs.device)
-        return AttentionOutput(
-            context=local_attention.context, weights=weights, p_t=centers
-        )
+        weights = encoder_outputs.new_zeros(batch, source_len).scatter_add(1, indices, result.weights)
+        return AttentionOutput(context=result.context, weights=weights, p_t=p_t)

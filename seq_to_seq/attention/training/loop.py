@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 
 import torch
 from torch import nn
@@ -33,10 +34,14 @@ def log_corpus(processed: ProcessedParallel) -> None:
     print(f"tgt vocab size: {processed.tgt_vocab_size:,}")
 
 
-def initialize_parameters(model: nn.Module, init_range: float = 0.1) -> None:
+def initialize_parameters(model: nn.Module, init_range: float = 0.1, *, seed: int | None = None) -> None:
     """Paper: uniform in [-0.1, 0.1]. No-op when the module has no parameters."""
     if init_range <= 0.0:
         raise ValueError("init_range must be > 0")
+    if seed is not None:
+        if seed < 0:
+            raise ValueError("seed must be >= 0")
+        torch.manual_seed(time.time_ns() if seed == 0 else seed)
     for param in model.parameters():
         nn.init.uniform_(param, -init_range, init_range)
 
@@ -61,6 +66,21 @@ def _make_optimizer(model: nn.Module, config: LuongConfig, learning_rate: float)
     if config.optimizer == "sgd":
         return torch.optim.SGD(params, lr=learning_rate)
     raise ValueError(f"unknown optimizer: {config.optimizer}")
+
+
+def _clip_gradients(model: nn.Module, max_norm: float) -> None:
+    """Official trainer: exclude embeddings from the norm, scale every gradient."""
+    embeddings = {
+        p for module in model.modules() if isinstance(module, nn.Embedding)
+        for p in module.parameters()
+    }
+    norm = clip_grad_norm_(
+        [p for p in model.parameters() if p not in embeddings], max_norm
+    )
+    scale = (max_norm / (norm + 1e-6)).clamp(max=1.0)
+    for parameter in embeddings:
+        if parameter.grad is not None:
+            parameter.grad.mul_(scale.to(parameter.grad.device))
 
 
 def fit(
@@ -95,10 +115,11 @@ def fit(
                 logits.reshape(-1, logits.size(-1)),
                 tgt_out.reshape(-1),
                 ignore_index=PAD_ID,
-            )
+                reduction="sum",
+            ) / src.size(0)
             optimizer.zero_grad()
             loss.backward()
-            clip_grad_norm_(model.parameters(), config.grad_clip)
+            _clip_gradients(model, config.grad_clip)
             optimizer.step()
             n = int(src.shape[0])
             epoch_loss += loss.detach().item() * n

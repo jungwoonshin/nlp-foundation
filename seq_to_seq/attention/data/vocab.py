@@ -13,6 +13,7 @@ EOS_TOKEN = "</s>"
 UNK_TOKEN = "<unk>"
 STANFORD_SPECIALS = frozenset({UNK_TOKEN, BOS_TOKEN, EOS_TOKEN, PAD_TOKEN})
 _SPECIALS = (PAD_TOKEN, BOS_TOKEN, EOS_TOKEN, UNK_TOKEN)
+_TARGET_SPECIALS = (BOS_TOKEN, "<t_sos>", "<t_eos>", UNK_TOKEN)
 
 
 class Vocab:
@@ -22,8 +23,8 @@ class Vocab:
         tokens = list(id_to_token)
         if len(tokens) < len(_SPECIALS):
             raise ValueError("vocab must include PAD, BOS, EOS, and UNK")
-        if tuple(tokens[: len(_SPECIALS)]) != _SPECIALS:
-            raise ValueError("vocab must start with <pad>, <s>, </s>, <unk>")
+        if tuple(tokens[: len(_SPECIALS)]) not in (_SPECIALS, _TARGET_SPECIALS):
+            raise ValueError("vocab must start with PAD/BOS/EOS/UNK or Stanford target specials")
         self.id_to_token = tokens
         self.token_to_id: dict[str, int] = {}
         for index, token in enumerate(tokens):
@@ -40,6 +41,16 @@ class Vocab:
     def encode(self, tokens: Sequence[str]) -> list[int]:
         unk = self.token_to_id[UNK_TOKEN]
         return [self.token_to_id.get(token, unk) for token in tokens]
+
+    def for_target(self) -> Vocab:
+        """Separate target SOS/EOS from the base vocab's reserved <s>/</s>.
+
+        The unused base <s> occupies PAD's slot; ids 1/2 are target SOS/EOS.
+        This preserves content ids while matching the official output size.
+        """
+        if tuple(self.id_to_token[:4]) == _TARGET_SPECIALS:
+            return self
+        return Vocab([*_TARGET_SPECIALS, *self.id_to_token[4:], EOS_TOKEN])
 
     def decode(self, ids: Sequence[int], *, stop_at_eos: bool = True) -> list[str]:
         tokens: list[str] = []

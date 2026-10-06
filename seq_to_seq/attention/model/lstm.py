@@ -15,8 +15,8 @@ class LSTMCell(nn.Module):
     def __init__(self, input_size: int, hidden_size: int) -> None:
         super().__init__()
         self.hidden_size = hidden_size
-        self.ih = nn.Linear(input_size, 4 * hidden_size)
-        self.hh = nn.Linear(hidden_size, 4 * hidden_size)
+        self.ih = nn.Linear(input_size, 4 * hidden_size, bias=False)
+        self.hh = nn.Linear(hidden_size, 4 * hidden_size, bias=False)
 
     def forward(
         self,
@@ -31,7 +31,7 @@ class LSTMCell(nn.Module):
         o_gate = torch.sigmoid(o_gate)
         c_t = f_gate * c_prev + i_gate * g_gate
         h_t = o_gate * torch.tanh(c_t)
-        return h_t, c_t
+        return h_t.clamp(-50, 50), c_t.clamp(-50, 50)
 
 
 class StackedLSTM(nn.Module):
