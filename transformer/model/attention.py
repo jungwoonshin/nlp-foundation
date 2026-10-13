@@ -1,16 +1,18 @@
-"""Attention signatures for paper equations 1 and 2; no implemented backend."""
+"""Scaled dot-product and multi-head attention for paper equations 1 and 2."""
 from torch import Tensor, nn
 from transformer.model.types import AttentionOutput
 
 import math, torch
 
 def scaled_dot_product_attention(q: Tensor, k: Tensor, v: Tensor,
-                                 blocked_mask: Tensor | None = None) -> AttentionOutput:
+                                 blocked_mask: Tensor | None = None,
+                                 dropout_p: float = 0., training: bool = True) -> AttentionOutput:
     """softmax(QK^T/sqrt(d_k))V, masking before softmax.
 
     q=(B,h,Q,d_k), k=(B,h,K,d_k), v=(B,h,K,d_v).
     blocked_mask broadcasts to (B,h,Q,K); True means blocked. Return context
     (B,h,Q,d_v) and weights (B,h,Q,K). All-blocked queries must not produce NaN.
+    Returned weights include attention dropout, applied only during training.
     """
 
     sqrt_d_k = math.sqrt(k.shape[-1])
@@ -26,6 +28,7 @@ def scaled_dot_product_attention(q: Tensor, k: Tensor, v: Tensor,
     if blocked_mask is not None:
         weights = weights.masked_fill(blocked_mask, 0.0)
 
+    weights = torch.nn.functional.dropout(weights, p=dropout_p, training=training)
     context = weights @ v # (B, h, Q, d_v)
     return AttentionOutput(context=context, weights=weights)
 
@@ -40,6 +43,16 @@ class MultiHeadAttention(nn.Module):
     def __init__(self, d_model: int, heads: int, dropout: float = 0.):
         super().__init__()
 
+        if d_model <= 0:
+            raise ValueError("d_model must be positive")
+        if heads <= 0:
+            raise ValueError("heads must be positive")
+        if d_model % heads != 0:
+            raise ValueError("d_model must be divisible by heads")
+        if not 0 <= dropout <= 1:
+            raise ValueError("dropout must be between zero and one")
+
+        self.dropout = dropout
         self.heads = heads
         self.d_k = d_model // heads
         self.d_v = d_model // heads
@@ -62,7 +75,9 @@ class MultiHeadAttention(nn.Module):
         k = key.reshape(B, K, h, self.d_k).transpose(1, 2)
         v = value.reshape(B, K, h, self.d_v).transpose(1, 2)
 
-        attention_output = scaled_dot_product_attention(q, k, v, blocked_mask)
+        attention_output = scaled_dot_product_attention(
+            q, k, v, blocked_mask, dropout_p=self.dropout, training=self.training
+        )
         context = attention_output.context.transpose(1, 2)
         context = context.reshape(B, Q, h * self.d_v)
         context = self.o_proj(context)
