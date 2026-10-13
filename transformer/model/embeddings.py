@@ -1,12 +1,14 @@
 """Embedding signatures: paper section 3.4; reference shares all three weight matrices."""
 from torch import Tensor, nn
-
+import math
 
 class TokenEmbedding(nn.Module):
     """tokens (B,L) -> sqrt(d_model) * embeddings (B,L,d_model); PAD row is zero."""
-    def __init__(self, vocab_size: int, d_model: int, padding_idx: int = 1):
+    def __init__(self, vocab_size: int, d_model: int = 512, padding_idx: int = 1):
         super().__init__()
-        raise NotImplementedError("Implement Transformer token embeddings and scaling")
+        self.D_MODEL = d_model
+        self.embedding = nn.Embedding(vocab_size, self.D_MODEL, padding_idx=padding_idx)
+        self.NORMALIZE_CONSTANT = math.sqrt(self.D_MODEL)
 
     def forward(self, tokens: Tensor) -> Tensor:
-        raise NotImplementedError
+        return self.embedding(tokens) * self.NORMALIZE_CONSTANT
