@@ -1,0 +1,6 @@
+# Python 3.11; CUDA 12.1 wheels for the pinned OpenNMT-py 3.5.1 dependency range.
+--extra-index-url https://download.pytorch.org/whl/cu121
+OpenNMT-py==3.5.1
+torch==2.2.2+cu121
+numpy==1.26.4
+sacrebleu==2.6.0

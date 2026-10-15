@@ -1,0 +1,557 @@
+{
+  "date": "2026-10-12",
+  "scope": "GPU global/general comparison of unchanged OpenNMT-py model modules with repository model; shared trainer and scoring; not default CLI pipeline",
+  "repository_head": "4f70fb3bfe09b8a0b1bf06096596113e37c7f941",
+  "metadata": {
+    "config": {
+      "attention": "global",
+      "score": "general",
+      "input_feeding": true,
+      "reverse_source": true,
+      "max_len": 50,
+      "src_lang": "de",
+      "tgt_lang": "en",
+      "num_layers": 1,
+      "embed_dim": 100,
+      "hidden_size": 100,
+      "dropout": 0,
+      "rnn_bias": true,
+      "output_bias": true,
+      "state_clip": null,
+      "training_convention": "opennmt",
+      "window_size": 10,
+      "batch_size": 128,
+      "epochs": 10,
+      "learning_rate": 1,
+      "optimizer": "sgd",
+      "lr_decay_start": 5,
+      "grad_clip": 5,
+      "init_range": 0.1,
+      "seed": 42,
+      "max_train_examples": null,
+      "max_eval_examples": null
+    },
+    "gpu": "NVIDIA GeForce RTX 3080",
+    "torch": "2.2.2+cu121",
+    "cuda": "12.1",
+    "python": "3.11.13 (main, Jul 11 2025, 22:36:59) [MSC v.1944 64 bit (AMD64)]",
+    "official_sha": "32f8564e39d4a3d30fa57038e44f4a3dbdc2068c",
+    "opennmt_sha": "97111d97551c24857076a4102eabdb468b35cff4",
+    "onmt_source": "C:\\Users\\jungw\\github\\nlp-foundation\\.tmp\\luong-comparison-2026-10-12\\OpenNMT-py\\onmt\\__init__.py",
+    "data_sha256": {
+      "test.100.de": "80d471c5bb3d4b6f1a2457845989666a468316b7a78d9daff38f2d084b94db2f",
+      "test.100.en": "b555352379b81b4e8c19b3b4b1ca9c287eedf54364b773c8ef6cd068ef15b9a1",
+      "train.10k.de": "dd2e70692352a82675c170c050ebc9deb3ce8e37d4351c1e7a4a10e6c46200a0",
+      "train.10k.en": "8a1e7de4fc58de627e04d847c490bec1ed13c59c73d935abd187317cba7517ae",
+      "valid.100.de": "e71e97c4f39841913f97d254c2bc6b78a91aeb6c7b99ded667a4f8d1195ec879",
+      "valid.100.en": "4bddf589320419c0c65b456b532e6f61ba2fcc219f81aa8e72bbb2cf19d04783"
+    },
+    "code_sha256": {
+      "seq_to_seq\\attention\\__init__.py": "507dbba228c079a436dc1b98a89476675880536586891797c47c73d63d6275c6",
+      "seq_to_seq\\attention\\config.py": "9e3922374ecd5616856e4b17b7daa4ed8704be6b660c0f10acb36f45af532be8",
+      "seq_to_seq\\attention\\data\\__init__.py": "dba441504a49db59905d9efeffc8da0ac54e3d9ce8c78e9fd4a6263e908b959c",
+      "seq_to_seq\\attention\\data\\corpus.py": "99fe0c23ae58e24d2c3000856fe7ab99ff1a17387c8559b491ec968c6d5fce4c",
+      "seq_to_seq\\attention\\data\\dataset.py": "4e8715bb6161e4c0217e95a584bdbb573ae24f88d24505eca15253ee096a5af9",
+      "seq_to_seq\\attention\\data\\download.py": "4069e1708fc2695d67d36608e876bd5588345ba5e0fa9a9ec357ea60bb7df82a",
+      "seq_to_seq\\attention\\data\\vocab.py": "4d830ce7ddf28897c42ab7daa875743f2d638281abea09d16e7f9c489367dff6",
+      "seq_to_seq\\attention\\eval\\__init__.py": "90ae635f99c4dd263c8d36e2ce27bb7dbe44fc19d70644c90d322a1120749a02",
+      "seq_to_seq\\attention\\eval\\bleu.py": "8934f8853ce7929c33d44fe66057aa86d7999d763ac772c78b15720ff9c1127a",
+      "seq_to_seq\\attention\\eval\\metrics.py": "a566e30b0ced90de0afbfd25c45e174ee1811fc630b591c7e4c66dd39678ab61",
+      "seq_to_seq\\attention\\model\\__init__.py": "562aba84323c253ad36671bb479e5b6efc104bc817d9297cbf7a2837c47347ae",
+      "seq_to_seq\\attention\\model\\decoder.py": "e338a0391bba91387a9641aca83cf48153156a9fc25d87ac31b98e58c7986ea5",
+      "seq_to_seq\\attention\\model\\encoder.py": "59f289535305047b5e542e075539c440b1cb9271e84823219f082fdd9f0b8573",
+      "seq_to_seq\\attention\\model\\global_attention.py": "75998752a41b77dd4515c5239f5746ec069fe3f530eec96dcf5faf47fc350eea",
+      "seq_to_seq\\attention\\model\\local_attention.py": "8c9c7d965a46af89121f4425f91d8e441d0c0d3a52b59367f6cda2ee343bdc12",
+      "seq_to_seq\\attention\\model\\lstm.py": "4a49a41d7a5abce140124fd81390f98ef2ec9bb96fd6794e9c85cbb4830edcaa",
+      "seq_to_seq\\attention\\model\\nmt.py": "a216c376fac7a5fd673b47cb9b81fe2b3ac955bfb9487d7a693158eaacb10d3c",
+      "seq_to_seq\\attention\\model\\types.py": "0b580b5fc3957228f976f2222468f983181881b39760a087a98ffcadbe0fbd0b",
+      "seq_to_seq\\attention\\training\\__init__.py": "6763166ba8716a00460d5765a50f378d52b99241262e9522095b9873964d24e1",
+      "seq_to_seq\\attention\\training\\dummy.py": "720ffe827a913784c7a30d8fd3676c8611da8317126ab0b9c29ddcab0a27f251",
+      "seq_to_seq\\attention\\training\\loop.py": "d76a791005bbf7fcfb2e344d8babff7c6b6f5dd0c0fce884fa8dab558d4b7e3d",
+      "scripts\\luong_attention\\compare_opennmt.py": "5f0e6ed3521ad7ba3414e8a7a715b923a77118eaa5c4405ca059bcbb79b0f96f"
+    },
+    "vocab_sizes": [
+      1001,
+      1002
+    ],
+    "protocol": "Shared trainer, sentence normalization, full gradient norm; final epoch; identical mapped initialization and batch RNG per seed"
+  },
+  "run_configs": {
+    "ours_matlab_profile_seed42": {
+      "attention": "global",
+      "score": "general",
+      "input_feeding": true,
+      "reverse_source": true,
+      "max_len": 50,
+      "src_lang": "de",
+      "tgt_lang": "en",
+      "num_layers": 1,
+      "embed_dim": 100,
+      "hidden_size": 100,
+      "dropout": 0,
+      "rnn_bias": false,
+      "output_bias": false,
+      "state_clip": 50,
+      "training_convention": "matlab",
+      "window_size": 10,
+      "batch_size": 128,
+      "epochs": 10,
+      "learning_rate": 1,
+      "optimizer": "sgd",
+      "lr_decay_start": 5,
+      "grad_clip": 5,
+      "init_range": 0.1,
+      "seed": 42,
+      "max_train_examples": null,
+      "max_eval_examples": null
+    },
+    "opennmt_seed42": {
+      "attention": "global",
+      "score": "general",
+      "input_feeding": true,
+      "reverse_source": true,
+      "max_len": 50,
+      "src_lang": "de",
+      "tgt_lang": "en",
+      "num_layers": 1,
+      "embed_dim": 100,
+      "hidden_size": 100,
+      "dropout": 0,
+      "rnn_bias": true,
+      "output_bias": true,
+      "state_clip": null,
+      "training_convention": "opennmt",
+      "window_size": 10,
+      "batch_size": 128,
+      "epochs": 10,
+      "learning_rate": 1,
+      "optimizer": "sgd",
+      "lr_decay_start": 5,
+      "grad_clip": 5,
+      "init_range": 0.1,
+      "seed": 42,
+      "max_train_examples": null,
+      "max_eval_examples": null
+    },
+    "ours_aligned_seed42": {
+      "attention": "global",
+      "score": "general",
+      "input_feeding": true,
+      "reverse_source": true,
+      "max_len": 50,
+      "src_lang": "de",
+      "tgt_lang": "en",
+      "num_layers": 1,
+      "embed_dim": 100,
+      "hidden_size": 100,
+      "dropout": 0,
+      "rnn_bias": true,
+      "output_bias": true,
+      "state_clip": null,
+      "training_convention": "opennmt",
+      "window_size": 10,
+      "batch_size": 128,
+      "epochs": 10,
+      "learning_rate": 1,
+      "optimizer": "sgd",
+      "lr_decay_start": 5,
+      "grad_clip": 5,
+      "init_range": 0.1,
+      "seed": 42,
+      "max_train_examples": null,
+      "max_eval_examples": null
+    },
+    "opennmt_seed43": {
+      "attention": "global",
+      "score": "general",
+      "input_feeding": true,
+      "reverse_source": true,
+      "max_len": 50,
+      "src_lang": "de",
+      "tgt_lang": "en",
+      "num_layers": 1,
+      "embed_dim": 100,
+      "hidden_size": 100,
+      "dropout": 0,
+      "rnn_bias": true,
+      "output_bias": true,
+      "state_clip": null,
+      "training_convention": "opennmt",
+      "window_size": 10,
+      "batch_size": 128,
+      "epochs": 10,
+      "learning_rate": 1,
+      "optimizer": "sgd",
+      "lr_decay_start": 5,
+      "grad_clip": 5,
+      "init_range": 0.1,
+      "seed": 43,
+      "max_train_examples": null,
+      "max_eval_examples": null
+    },
+    "ours_aligned_seed43": {
+      "attention": "global",
+      "score": "general",
+      "input_feeding": true,
+      "reverse_source": true,
+      "max_len": 50,
+      "src_lang": "de",
+      "tgt_lang": "en",
+      "num_layers": 1,
+      "embed_dim": 100,
+      "hidden_size": 100,
+      "dropout": 0,
+      "rnn_bias": true,
+      "output_bias": true,
+      "state_clip": null,
+      "training_convention": "opennmt",
+      "window_size": 10,
+      "batch_size": 128,
+      "epochs": 10,
+      "learning_rate": 1,
+      "optimizer": "sgd",
+      "lr_decay_start": 5,
+      "grad_clip": 5,
+      "init_range": 0.1,
+      "seed": 43,
+      "max_train_examples": null,
+      "max_eval_examples": null
+    }
+  },
+  "results": [
+    {
+      "implementation": "ours_matlab_profile",
+      "seed": 42,
+      "test_perplexity": 24.00186614981592,
+      "valid_perplexity": 23.85536187375499,
+      "test_bleu": 0,
+      "bleu_signature": "nrefs:1|case:mixed|eff:no|tok:none|smooth:none|version:2.6.0",
+      "bleu_counts": [
+        15,
+        0,
+        0,
+        0
+      ],
+      "bleu_totals": [
+        4989,
+        4889,
+        4789,
+        4689
+      ],
+      "hypothesis_words": 4989,
+      "reference_words": 2125,
+      "parameters": 530500,
+      "train_seconds": 145.50272449999966,
+      "steps": 790
+    },
+    {
+      "implementation": "opennmt",
+      "seed": 42,
+      "test_perplexity": 25.326928492287934,
+      "valid_perplexity": 26.000688537263365,
+      "test_bleu": 0,
+      "bleu_signature": "nrefs:1|case:mixed|eff:no|tok:none|smooth:none|version:2.6.0",
+      "bleu_counts": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "bleu_totals": [
+        5000,
+        4900,
+        4800,
+        4700
+      ],
+      "hypothesis_words": 5000,
+      "reference_words": 2125,
+      "parameters": 533102,
+      "train_seconds": 57.727039100000184,
+      "steps": 790
+    },
+    {
+      "implementation": "ours_aligned",
+      "seed": 42,
+      "test_perplexity": 25.52509952065905,
+      "valid_perplexity": 26.074640187249237,
+      "test_bleu": 0,
+      "bleu_signature": "nrefs:1|case:mixed|eff:no|tok:none|smooth:none|version:2.6.0",
+      "bleu_counts": [
+        2,
+        0,
+        0,
+        0
+      ],
+      "bleu_totals": [
+        4984,
+        4884,
+        4784,
+        4684
+      ],
+      "hypothesis_words": 4984,
+      "reference_words": 2125,
+      "parameters": 533102,
+      "train_seconds": 138.95559249999997,
+      "steps": 790
+    },
+    {
+      "implementation": "opennmt",
+      "seed": 43,
+      "test_perplexity": 25.664571031827606,
+      "valid_perplexity": 26.11540321168888,
+      "test_bleu": 0,
+      "bleu_signature": "nrefs:1|case:mixed|eff:no|tok:none|smooth:none|version:2.6.0",
+      "bleu_counts": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "bleu_totals": [
+        5000,
+        4900,
+        4800,
+        4700
+      ],
+      "hypothesis_words": 5000,
+      "reference_words": 2125,
+      "parameters": 533102,
+      "train_seconds": 57.55476950000002,
+      "steps": 790
+    },
+    {
+      "implementation": "ours_aligned",
+      "seed": 43,
+      "test_perplexity": 25.466736677093678,
+      "valid_perplexity": 26.093604557098146,
+      "test_bleu": 0,
+      "bleu_signature": "nrefs:1|case:mixed|eff:no|tok:none|smooth:none|version:2.6.0",
+      "bleu_counts": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "bleu_totals": [
+        5000,
+        4900,
+        4800,
+        4700
+      ],
+      "hypothesis_words": 5000,
+      "reference_words": 2125,
+      "parameters": 533102,
+      "train_seconds": 139.77713649999987,
+      "steps": 790
+    }
+  ],
+  "parity": [
+    {
+      "device": "cpu",
+      "dtype": "torch.float64",
+      "layers": 1,
+      "max_logit_error": 2.7755575615628914e-17,
+      "max_gradient_error": 2.220446049250313e-16,
+      "max_update_error": 0,
+      "passed": true
+    },
+    {
+      "device": "cuda",
+      "dtype": "torch.float32",
+      "layers": 1,
+      "max_logit_error": 7.450580596923828e-9,
+      "max_gradient_error": 4.470348358154297e-8,
+      "max_update_error": 0,
+      "passed": true
+    },
+    {
+      "device": "cpu",
+      "dtype": "torch.float64",
+      "layers": 2,
+      "max_logit_error": 1.3877787807814457e-17,
+      "max_gradient_error": 5.551115123125783e-17,
+      "max_update_error": 1.734723475976807e-18,
+      "passed": true
+    },
+    {
+      "device": "cuda",
+      "dtype": "torch.float32",
+      "layers": 2,
+      "max_logit_error": 7.450580596923828e-9,
+      "max_gradient_error": 4.470348358154297e-8,
+      "max_update_error": 0,
+      "passed": true
+    }
+  ],
+  "independent_verification": {
+    "checkpoints": [
+      {
+        "run": "opennmt_seed42",
+        "test_tokens": 2225,
+        "independent_ppl": 25.326924976610368,
+        "stored_ppl": 25.326928492287934,
+        "absolute_error": 0.000003515677565957276,
+        "official_perl_bleu": "BLEU = 0.00, 0.0/0.0/0.0/0.0 (BP=1.000, ratio=2.353, hyp_len=5000, ref_len=2125)",
+        "checkpoint_sha256": "196bbe93d0d84fa596edb4512a91e6f64994685d7bf3827786939c73e81571d8"
+      },
+      {
+        "run": "opennmt_seed43",
+        "test_tokens": 2225,
+        "independent_ppl": 25.6645680280185,
+        "stored_ppl": 25.664571031827606,
+        "absolute_error": 0.0000030038091054507277,
+        "official_perl_bleu": "BLEU = 0.00, 0.0/0.0/0.0/0.0 (BP=1.000, ratio=2.353, hyp_len=5000, ref_len=2125)",
+        "checkpoint_sha256": "b20a89e72e6ef0c0bbe2e591a091374f184cacebb074eacfebf6b026dff39c4f"
+      },
+      {
+        "run": "ours_aligned_seed42",
+        "test_tokens": 2225,
+        "independent_ppl": 25.52510837648954,
+        "stored_ppl": 25.52509952065905,
+        "absolute_error": 0.000008855830490261951,
+        "official_perl_bleu": "BLEU = 0.00, 0.0/0.0/0.0/0.0 (BP=1.000, ratio=2.345, hyp_len=4984, ref_len=2125)",
+        "checkpoint_sha256": "3425a1277e02ebbaa4e811c95e2af5ef577b37491de66fa85591c20984cc91e4"
+      },
+      {
+        "run": "ours_aligned_seed43",
+        "test_tokens": 2225,
+        "independent_ppl": 25.46673342841282,
+        "stored_ppl": 25.466736677093678,
+        "absolute_error": 0.000003248680858547459,
+        "official_perl_bleu": "BLEU = 0.00, 0.0/0.0/0.0/0.0 (BP=1.000, ratio=2.353, hyp_len=5000, ref_len=2125)",
+        "checkpoint_sha256": "8567b4b99b5127a487b4714d3d077a67790483b21fc17eca3d9735bd499d3e7b"
+      },
+      {
+        "run": "ours_matlab_profile_seed42",
+        "test_tokens": 2225,
+        "independent_ppl": 24.00186548224558,
+        "stored_ppl": 24.00186614981592,
+        "absolute_error": 6.675703403402622e-7,
+        "official_perl_bleu": "BLEU = 0.00, 0.3/0.0/0.0/0.0 (BP=1.000, ratio=2.348, hyp_len=4989, ref_len=2125)",
+        "checkpoint_sha256": "99da927864238fb049b6ec9ccb907ec7bcea19460b0e5e64a3a62dc17a4d240c"
+      }
+    ],
+    "initialization": [
+      {
+        "seed": 42,
+        "initial_parameter_max_error": 0,
+        "real_batch_max_logit_error": 5.21540641784668e-8,
+        "real_batch_max_gradient_error": 2.384185791015625e-7,
+        "batch_rng_preserved": [
+          true,
+          true
+        ]
+      },
+      {
+        "seed": 43,
+        "initial_parameter_max_error": 0,
+        "real_batch_max_logit_error": 5.960464477539063e-8,
+        "real_batch_max_gradient_error": 9.5367431640625e-7,
+        "batch_rng_preserved": [
+          true,
+          true
+        ]
+      }
+    ],
+    "passed": true
+  },
+  "corpus_statistics": {
+    "train.10k": {
+      "pairs": 10000,
+      "source_words": 233898,
+      "target_words": 258682,
+      "target_unk": 74867,
+      "source_unk": 79474,
+      "duplicate_pairs": 1,
+      "exact_pairs_in_training": 10000
+    },
+    "valid.100": {
+      "pairs": 100,
+      "source_words": 1915,
+      "target_words": 1853,
+      "target_unk": 657,
+      "source_unk": 733,
+      "duplicate_pairs": 1,
+      "exact_pairs_in_training": 0
+    },
+    "test.100": {
+      "pairs": 100,
+      "source_words": 2186,
+      "target_words": 2125,
+      "target_unk": 888,
+      "source_unk": 911,
+      "duplicate_pairs": 0,
+      "exact_pairs_in_training": 0
+    }
+  },
+  "prediction_statistics": {
+    "ours_matlab_profile_seed42": {
+      "words": 4989,
+      "unknown": 4713,
+      "unique": [
+        "<unk>",
+        ",",
+        "The",
+        "If",
+        "you",
+        "to",
+        "the",
+        "."
+      ]
+    },
+    "opennmt_seed42": {
+      "words": 5000,
+      "unknown": 4951,
+      "unique": [
+        "<unk>",
+        ","
+      ]
+    },
+    "ours_aligned_seed42": {
+      "words": 4984,
+      "unknown": 4886,
+      "unique": [
+        "<unk>",
+        ",",
+        "."
+      ]
+    },
+    "opennmt_seed43": {
+      "words": 5000,
+      "unknown": 4967,
+      "unique": [
+        "<unk>",
+        "The",
+        "hotel",
+        "is",
+        "a",
+        "And",
+        "I",
+        ","
+      ]
+    },
+    "ours_aligned_seed43": {
+      "words": 5000,
+      "unknown": 4970,
+      "unique": [
+        "<unk>",
+        "The",
+        ","
+      ]
+    }
+  },
+  "epoch_logs": {
+    "ours_matlab_profile_seed42": "epoch   1  examples=10,000  loss=167.1456  lr=1  ppl=53.3982\r\nepoch   2  examples=10,000  loss=130.0749  lr=1  ppl=66.6931\r\nepoch   3  examples=10,000  loss=114.8909  lr=1  ppl=56.0743\r\nepoch   4  examples=10,000  loss=108.5677  lr=1  ppl=33.6911\r\nepoch   5  examples=10,000  loss=105.3990  lr=1  ppl=50.8809\r\nepoch   6  examples=10,000  loss=94.5470  lr=0.5  ppl=27.7452\r\nepoch   7  examples=10,000  loss=90.1949  lr=0.25  ppl=24.9912\r\nepoch   8  examples=10,000  loss=88.2517  lr=0.125  ppl=24.6231\r\nepoch   9  examples=10,000  loss=87.2995  lr=0.0625  ppl=24.1163\r\nepoch  10  examples=10,000  loss=86.7747  lr=0.03125  ppl=23.8554\r\neval  ppl=23.8554  exact_match=0.0000\r\n",
+    "opennmt_seed42": "epoch   1  examples=10,000  loss=159.2141  lr=1  ppl=131.1274\r\nepoch   2  examples=10,000  loss=118.2394  lr=1  ppl=56.8161\r\nepoch   3  examples=10,000  loss=114.4148  lr=1  ppl=73.1228\r\nepoch   4  examples=10,000  loss=111.2227  lr=1  ppl=38.1110\r\nepoch   5  examples=10,000  loss=107.8204  lr=1  ppl=76.3520\r\nepoch   6  examples=10,000  loss=97.4167  lr=0.5  ppl=36.4412\r\nepoch   7  examples=10,000  loss=92.9578  lr=0.25  ppl=26.8588\r\nepoch   8  examples=10,000  loss=91.2603  lr=0.125  ppl=26.5621\r\nepoch   9  examples=10,000  loss=90.4022  lr=0.0625  ppl=26.2960\r\nepoch  10  examples=10,000  loss=89.9493  lr=0.03125  ppl=26.0007\r\neval  ppl=26.0007  exact_match=0.0000\r\n",
+    "ours_aligned_seed42": "epoch   1  examples=10,000  loss=162.1147  lr=1  ppl=67.2118\r\nepoch   2  examples=10,000  loss=120.4942  lr=1  ppl=52.8942\r\nepoch   3  examples=10,000  loss=114.6067  lr=1  ppl=74.6699\r\nepoch   4  examples=10,000  loss=111.5812  lr=1  ppl=55.3422\r\nepoch   5  examples=10,000  loss=109.2028  lr=1  ppl=62.9793\r\nepoch   6  examples=10,000  loss=98.0124  lr=0.5  ppl=36.6017\r\nepoch   7  examples=10,000  loss=93.5248  lr=0.25  ppl=27.0155\r\nepoch   8  examples=10,000  loss=91.7139  lr=0.125  ppl=26.6153\r\nepoch   9  examples=10,000  loss=90.8192  lr=0.0625  ppl=26.4189\r\nepoch  10  examples=10,000  loss=90.3380  lr=0.03125  ppl=26.0746\r\neval  ppl=26.0746  exact_match=0.0000\r\n",
+    "opennmt_seed43": "epoch   1  examples=10,000  loss=153.6643  lr=1  ppl=129.5414\r\nepoch   2  examples=10,000  loss=121.1518  lr=1  ppl=49.9769\r\nepoch   3  examples=10,000  loss=114.9390  lr=1  ppl=61.2228\r\nepoch   4  examples=10,000  loss=112.4366  lr=1  ppl=40.2261\r\nepoch   5  examples=10,000  loss=109.3124  lr=1  ppl=49.0341\r\nepoch   6  examples=10,000  loss=97.7544  lr=0.5  ppl=29.1631\r\nepoch   7  examples=10,000  loss=93.7495  lr=0.25  ppl=26.7862\r\nepoch   8  examples=10,000  loss=91.9975  lr=0.125  ppl=26.2460\r\nepoch   9  examples=10,000  loss=91.1327  lr=0.0625  ppl=26.1526\r\nepoch  10  examples=10,000  loss=90.6634  lr=0.03125  ppl=26.1154\r\neval  ppl=26.1154  exact_match=0.0000\r\n",
+    "ours_aligned_seed43": "epoch   1  examples=10,000  loss=149.3098  lr=1  ppl=129.9750\r\nepoch   2  examples=10,000  loss=119.4529  lr=1  ppl=45.4231\r\nepoch   3  examples=10,000  loss=114.8933  lr=1  ppl=60.5330\r\nepoch   4  examples=10,000  loss=111.7761  lr=1  ppl=40.5076\r\nepoch   5  examples=10,000  loss=108.8668  lr=1  ppl=68.4712\r\nepoch   6  examples=10,000  loss=97.2673  lr=0.5  ppl=28.2945\r\nepoch   7  examples=10,000  loss=93.0243  lr=0.25  ppl=26.7277\r\nepoch   8  examples=10,000  loss=91.2630  lr=0.125  ppl=26.1974\r\nepoch   9  examples=10,000  loss=90.4202  lr=0.0625  ppl=26.1190\r\nepoch  10  examples=10,000  loss=89.9795  lr=0.03125  ppl=26.0936\r\neval  ppl=26.0936  exact_match=0.0000\r\n"
+  },
+  "environment_lock": "﻿absl-py==2.5.1\r\nannotated-doc==0.0.5\r\nannotated-types==0.8.0\r\nanyio==4.15.1\r\nblinker==1.9.0\r\nblis==1.3.3\r\ncatalogue==2.0.10\r\ncertifi==2026.7.22\r\ncharset-normalizer==3.5.2\r\nclick==8.5.0\r\ncloudpathlib==0.26.0\r\ncolorama==0.4.6\r\nconfection==1.3.3\r\nconfigargparse==1.8.0\r\nctranslate2==4.8.2\r\ncymem==2.0.13\r\nfasttext-wheel==0.9.2\r\nfilelock==4.1.1\r\nflask==3.1.3\r\nfsspec==2026.9.0\r\ngrpcio==1.84.0\r\nh11==0.16.0\r\nhttpcore==1.0.9\r\nhttpx==0.28.1\r\nidna==3.20\r\nitsdangerous==2.2.0\r\njinja2==3.1.6\r\nlxml==6.1.3\r\nmarkdown==3.11\r\nmarkdown-it-py==4.2.0\r\nmarkupsafe==3.0.4\r\nmdurl==0.1.2\r\nmpmath==1.3.0\r\nmurmurhash==1.0.15\r\nnetworkx==3.6.1\r\nnumpy==1.26.4\r\nopennmt-py==3.5.1\r\npackaging==26.3\r\npillow==12.3.0\r\nportalocker==4.4.0\r\npreshed==3.0.13\r\nprotobuf==7.36.2\r\npyahocorasick==2.3.1\r\npybind11==3.1.0\r\npydantic==2.14.1\r\npydantic-core==2.50.1\r\npygments==2.21.0\r\npyonmttok==1.38.1\r\npyyaml==6.0.3\r\nrapidfuzz==3.14.6\r\nregex==2026.9.29\r\nrequests==2.34.2\r\nrich==15.0.0\r\nsacrebleu==2.6.0\r\nsetuptools==84.0.0\r\nshellingham==1.5.4\r\nsix==1.17.0\r\nsmart-open==8.0.2\r\nspacy==3.8.16\r\nspacy-legacy==3.0.12\r\nspacy-loggers==1.0.5\r\nsrsly==2.5.4\r\nsympy==1.14.0\r\ntabulate==0.10.0\r\ntensorboard==2.21.0\r\ntensorboard-data-server==0.7.2\r\nthinc==8.3.13\r\ntorch==2.2.2+cu121\r\ntqdm==4.70.1\r\ntyper==0.27.3\r\ntyping-extensions==4.16.0\r\ntyping-inspection==0.4.4\r\nurllib3==2.8.0\r\nwaitress==3.0.2\r\nwasabi==1.1.3\r\nweasel==1.0.0\r\nwerkzeug==3.1.9\r\nwrapt==2.5.0\r\n",
+  "validation": {
+    "unit_tests_passed": 40,
+    "command": "python -m unittest discover -s tests -p test_luong*.py",
+    "checkpoint_reload": "passed for all five runs",
+    "code_hashes_unchanged": true
+  }
+}
