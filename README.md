@@ -34,10 +34,14 @@ Seq2seq foundation models train on a synthetic reverse-sequence task (no
 download). The Luong model implements dot, general, concat, and location-based
 global attention with input feeding, plus local-monotonic (`local_m`) attention
 with general scoring. For local-m, `window_size` is the radius D, so the window
-contains up to `2 * D + 1` source positions. Windows beyond the source return
+contains up to `2 * D + 1` source positions. Local-m clamps the center to the
+last source token, following the official implementation. Empty sources return
 zero context and weights. Predictive local attention (`local_p`) uses general
 scoring, predicts a separate real-valued center per example, and multiplies
 window alignments by a Gaussian without subsequent renormalization (Equation 11).
+
+For the authors’ smaller German–English demo and the global/general GPU
+comparison against OpenNMT-py, see [the comparison runner](scripts/luong_attention/DEMO.md).
 
 ## Data
 

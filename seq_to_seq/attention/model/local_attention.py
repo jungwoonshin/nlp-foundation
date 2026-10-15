@@ -13,7 +13,7 @@ class LocalAttention(nn.Module):
 
     Centers use zero-based original-source coordinates. Local-m clamps p_t=t
     to the final source token. Local-p anchors its 2D+1 window at floor(p_t).
-    window_size is the radius D (paper D=10), not the full window width.
+    window_size is radius D (official code default 10), not the full width.
     Content scores are normalized over valid positions inside the window.
     Local-p then multiplies them by a Gaussian centered on its prediction.
     Empty sources return zero context and weights.
