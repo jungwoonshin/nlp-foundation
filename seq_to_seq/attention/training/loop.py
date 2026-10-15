@@ -68,8 +68,13 @@ def _make_optimizer(model: nn.Module, config: LuongConfig, learning_rate: float)
     raise ValueError(f"unknown optimizer: {config.optimizer}")
 
 
-def _clip_gradients(model: nn.Module, max_norm: float) -> None:
-    """Official trainer: exclude embeddings from the norm, scale every gradient."""
+def _clip_gradients(model: nn.Module, max_norm: float, *, convention: str = "matlab") -> None:
+    """MATLAB excludes embeddings from the norm; OpenNMT includes them."""
+    if convention == "opennmt":
+        clip_grad_norm_(model.parameters(), max_norm)
+        return
+    if convention != "matlab":
+        raise ValueError("unknown gradient clipping convention")
     embeddings = {
         p for module in model.modules() if isinstance(module, nn.Embedding)
         for p in module.parameters()
@@ -111,18 +116,21 @@ def fit(
             tgt_in = batch["tgt_in"].to(chosen_device)
             tgt_out = batch["tgt_out"].to(chosen_device)
             logits = model(src, lengths, tgt_in)
-            loss = F.cross_entropy(
+            summed_loss = F.cross_entropy(
                 logits.reshape(-1, logits.size(-1)),
                 tgt_out.reshape(-1),
                 ignore_index=PAD_ID,
                 reduction="sum",
-            ) / src.size(0)
+            )
+            # MATLAB uses configured size; OpenNMT sentence normalization uses actual size.
+            denominator = config.batch_size if config.training_convention == "matlab" else src.size(0)
+            loss = summed_loss / denominator
             optimizer.zero_grad()
             loss.backward()
-            _clip_gradients(model, config.grad_clip)
+            _clip_gradients(model, config.grad_clip, convention=config.training_convention)
             optimizer.step()
             n = int(src.shape[0])
-            epoch_loss += loss.detach().item() * n
+            epoch_loss += summed_loss.detach().item()
             epoch_docs += n
         last_loss = epoch_loss / max(epoch_docs, 1)
         parts = [

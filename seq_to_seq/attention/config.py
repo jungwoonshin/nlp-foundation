@@ -31,6 +31,10 @@ class LuongConfig:
     embed_dim: int = 128
     hidden_size: int = 128
     dropout: float = 0.2
+    rnn_bias: bool = False  # MATLAB-style default; OpenNMT-py uses biases.
+    output_bias: bool = False
+    state_clip: float | None = 50.0
+    training_convention: Literal["matlab", "opennmt"] = "matlab"
     window_size: int = 10
     batch_size: int = 32
     epochs: int = 10
@@ -44,6 +48,10 @@ class LuongConfig:
     max_eval_examples: int | None = None
 
     def validate(self) -> None:
+        if self.training_convention not in ("matlab", "opennmt"):
+            raise ValueError("training_convention must be matlab or opennmt")
+        if self.state_clip is not None and self.state_clip <= 0:
+            raise ValueError("state_clip must be positive or None")
         if self.seed < 0:
             raise ValueError("seed must be >= 0")
         if self.attention not in ATTENTION_KINDS:

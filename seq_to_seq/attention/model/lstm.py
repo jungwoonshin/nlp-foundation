@@ -12,11 +12,13 @@ LSTMState = tuple[torch.Tensor, torch.Tensor]
 class LSTMCell(nn.Module):
     """LSTM cell with PyTorch gate order: input, forget, cell, output."""
 
-    def __init__(self, input_size: int, hidden_size: int) -> None:
+    def __init__(self, input_size: int, hidden_size: int, *, bias: bool = False,
+                 state_clip: float | None = 50.0) -> None:
         super().__init__()
         self.hidden_size = hidden_size
-        self.ih = nn.Linear(input_size, 4 * hidden_size, bias=False)
-        self.hh = nn.Linear(hidden_size, 4 * hidden_size, bias=False)
+        self.state_clip = state_clip
+        self.ih = nn.Linear(input_size, 4 * hidden_size, bias=bias)
+        self.hh = nn.Linear(hidden_size, 4 * hidden_size, bias=bias)
 
     def forward(
         self,
@@ -31,13 +33,16 @@ class LSTMCell(nn.Module):
         o_gate = torch.sigmoid(o_gate)
         c_t = f_gate * c_prev + i_gate * g_gate
         h_t = o_gate * torch.tanh(c_t)
-        return h_t.clamp(-50, 50), c_t.clamp(-50, 50)
+        if self.state_clip is None:
+            return h_t, c_t
+        return h_t.clamp(-self.state_clip, self.state_clip), c_t.clamp(-self.state_clip, self.state_clip)
 
 
 class StackedLSTM(nn.Module):
     """Stack of LSTMCells. Layer 0 reads x; layer i reads layer i-1 at the same step."""
 
-    def __init__(self, input_size: int, hidden_size: int, num_layers: int) -> None:
+    def __init__(self, input_size: int, hidden_size: int, num_layers: int, *, bias: bool = False,
+                 state_clip: float | None = 50.0) -> None:
         super().__init__()
         if num_layers < 1:
             raise ValueError("num_layers must be >= 1")
@@ -46,7 +51,8 @@ class StackedLSTM(nn.Module):
         self.num_layers = num_layers
         self.cells = nn.ModuleList(
             [
-                LSTMCell(input_size if layer == 0 else hidden_size, hidden_size)
+                LSTMCell(input_size if layer == 0 else hidden_size, hidden_size,
+                         bias=bias, state_clip=state_clip)
                 for layer in range(num_layers)
             ]
         )

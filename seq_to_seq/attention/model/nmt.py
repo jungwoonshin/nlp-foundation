@@ -63,11 +63,13 @@ class LuongNMT(nn.Module):
         self.encoder_embed = nn.Embedding(src_vocab_size, embed_dim, padding_idx=PAD_ID)
         self.decoder_embed = nn.Embedding(tgt_vocab_size, embed_dim, padding_idx=PAD_ID)
 
-        self.encoder = StackedLSTM(embed_dim, hidden_size, num_layers=num_layers)
+        self.encoder = StackedLSTM(embed_dim, hidden_size, num_layers=num_layers,
+                                   bias=config.rnn_bias, state_clip=config.state_clip)
         decoder_input_size = (
             embed_dim + hidden_size if config.input_feeding else embed_dim
         )
-        self.decoder = StackedLSTM(decoder_input_size, hidden_size, num_layers=num_layers)
+        self.decoder = StackedLSTM(decoder_input_size, hidden_size, num_layers=num_layers,
+                                   bias=config.rnn_bias, state_clip=config.state_clip)
         if config.attention == "global":
             self.attention = GlobalAttention(
                 hidden_size,
@@ -88,7 +90,7 @@ class LuongNMT(nn.Module):
         # Equations (5) and (6) use matrix projections without bias terms.
         self.w_c = nn.Linear(2 * hidden_size, hidden_size, bias=False)
         self.activation = nn.Tanh()
-        self.out = nn.Linear(hidden_size, tgt_vocab_size, bias=False)
+        self.out = nn.Linear(hidden_size, tgt_vocab_size, bias=config.output_bias)
 
     def encode(
         self,
