@@ -4,9 +4,16 @@ from torch import Tensor, nn
 
 class PositionwiseFeedForward(nn.Module):
     """FFN(x)=ReLU(x W_1+b_1)W_2+b_2; (B,L,d_model) -> same shape."""
-    def __init__(self, d_model: int, d_ff: int, dropout: float = 0.):
+    def __init__(self, d_model: int = 512, d_ff: int = 2048, dropout: float = 0.):
         super().__init__()
-        raise NotImplementedError("Implement position-wise feed-forward layers")
+        self.D_FF = d_ff
+        self.D_MODEL = d_model
+        self.projection_one = nn.Linear(self.D_MODEL, self.D_FF)
+        self.projection_two = nn.Linear(self.D_FF, self.D_MODEL)
+        self.activation = nn.ReLU()
 
     def forward(self, x: Tensor) -> Tensor:
-        raise NotImplementedError
+        projected = self.projection_one(x)
+        projected = self.activation(projected)
+        projected = self.projection_two(projected)
+        return projected
