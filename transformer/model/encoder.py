@@ -12,15 +12,15 @@ class EncoderLayer(nn.Module):
         super().__init__()
         self.first_sublayer = MultiHeadAttention(config.d_model, heads=config.heads, dropout=config.attention_dropout)
         self.second_sublayer = PositionwiseFeedForward(config.d_model, d_ff=config.d_ff, dropout=config.activation_dropout)
-        self.first_layer_norm = LayerNorm(config.d_model)
-        self.second_layer_norm = LayerNorm(config.d_model)
+        self.first_layernorm = LayerNorm(config.d_model)
+        self.second_layernorm = LayerNorm(config.d_model)
         self.dropout = nn.Dropout(p=config.dropout)
 
     def forward(self, x: Tensor, blocked_mask: Tensor) -> Tensor:
         """x=(B,S,d_model); blocked_mask=(B,1,1,S); output matches x."""
         attention_output = self.first_sublayer(x,x,x,blocked_mask).context
-        x = self.first_layer_norm(x + self.dropout(attention_output))
-        x = self.second_layer_norm(x + self.dropout(self.second_sublayer(x)))
+        x = self.first_layernorm(x + self.dropout(attention_output))
+        x = self.second_layernorm(x + self.dropout(self.second_sublayer(x)))
         return x
 
 class Encoder(nn.Module):
