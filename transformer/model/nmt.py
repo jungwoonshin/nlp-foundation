@@ -13,8 +13,8 @@ from transformer.model.positional_encoding import SinusoidalPositionalEncoding
 class TransformerNMT(nn.Module):
     """Paper encoder/decoder with joined source/target/output embeddings.
 
-    This scaffold intentionally cannot train a real Transformer yet. Implement
-    components in model/ without nn.Transformer/MultiheadAttention shortcuts.
+    Components implement the pinned Multi30k text-only reference without
+    nn.Transformer/MultiheadAttention shortcuts.
     Source EOS is included, src is left padded, and tgt_in starts with EOS
     (Fairseq decoder-start convention). There is no RNN state, source reversal,
     or Luong input feeding. PAD ids must be excluded by attention masks.
@@ -31,7 +31,7 @@ class TransformerNMT(nn.Module):
         self.output_projection.weight = self.token_embeddings.embedding.weight # Tie weights between Embedding and Output Projection
 
     def encode(self, src: Tensor, src_mask: Tensor) -> Tensor:
-        """src=(B,S), lengths=(B,) including EOS -> memory=(B,S,d_model)."""
+        """src=(B,S), src_mask=(B,1,1,S) -> memory=(B,S,d_model)."""
         src_embeddings = self.positions(self.token_embeddings(src), src.eq(PAD_ID))
         encoded = self.encoder(src_embeddings, src_mask)
         return encoded
@@ -39,7 +39,7 @@ class TransformerNMT(nn.Module):
     def decode(self, tgt_in: Tensor, memory: Tensor, source_mask: Tensor) -> Tensor:
         """tgt_in=(B,T), memory=(B,S,d_model),
             source_mask=(B,1,1,S), True at source PAD; 
-            return logits (B,T,vocab_size)."""
+            return decoder features (B,T,d_model)."""
         # x: Tensor, memory: Tensor, self_mask: Tensor, source_mask: Tensor
         tgt_in_embeddings = self.positions(self.token_embeddings(tgt_in), tgt_in.eq(PAD_ID))
         self_mask = decoder_mask(tgt_in)
