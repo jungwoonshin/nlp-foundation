@@ -9,11 +9,16 @@ class PositionwiseFeedForward(nn.Module):
         self.D_FF = d_ff
         self.D_MODEL = d_model
         self.projection_one = nn.Linear(self.D_MODEL, self.D_FF)
+        nn.init.xavier_uniform_(self.projection_one.weight)
+        nn.init.zeros_(self.projection_one.bias)
         self.projection_two = nn.Linear(self.D_FF, self.D_MODEL)
+        nn.init.xavier_uniform_(self.projection_two.weight)
+        nn.init.zeros_(self.projection_two.bias)
         self.activation = nn.ReLU()
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x: Tensor) -> Tensor:
         projected = self.projection_one(x)
-        projected = self.activation(projected)
+        projected = self.dropout(self.activation(projected))
         projected = self.projection_two(projected)
         return projected
