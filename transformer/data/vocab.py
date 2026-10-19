@@ -42,11 +42,14 @@ class Vocab:
 def build_vocab(pairs, padding_factor=8):
     if padding_factor < 1:
         raise ValueError("padding_factor must be positive")
+    pairs = list(pairs)
     counts = Counter(token for src, tgt in pairs for row in (src, tgt) for token in row)
+    special_counts = [1 + counts.get(token, 0) for token in SPECIALS]
+    special_counts[EOS_ID] += 2 * len(pairs)
     for token in SPECIALS:
         counts.pop(token, None)
     ordered = sorted(counts, key=lambda token: (-counts[token], token))
-    tokens, frequencies = SPECIALS + ordered, [1] * 4 + [counts[t] for t in ordered]
+    tokens, frequencies = SPECIALS + ordered, special_counts + [counts[t] for t in ordered]
     i = 0
     while len(tokens) % padding_factor:
         token = f"madeupword{i:04d}"
