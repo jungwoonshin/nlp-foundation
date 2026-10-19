@@ -57,10 +57,15 @@ class MultiHeadAttention(nn.Module):
         self.d_k = d_model // heads
         self.d_v = d_model // heads
 
-        self.q_proj = torch.nn.Linear(d_model, heads * self.d_k, bias=False)
-        self.k_proj = torch.nn.Linear(d_model, heads * self.d_k, bias=False)
-        self.v_proj = torch.nn.Linear(d_model, heads * self.d_v, bias=False)
-        self.o_proj = torch.nn.Linear(heads * self.d_v, d_model, bias=False)
+        # Match the reference's construction and initialization order.
+        self.k_proj = nn.Linear(d_model, heads * self.d_k)
+        self.v_proj = nn.Linear(d_model, heads * self.d_v)
+        self.q_proj = nn.Linear(d_model, heads * self.d_k)
+        self.o_proj = nn.Linear(heads * self.d_v, d_model)
+        for layer in (self.k_proj, self.v_proj, self.q_proj):
+            nn.init.xavier_uniform_(layer.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.o_proj.weight)
+        nn.init.zeros_(self.o_proj.bias)
 
     def forward(self, query: Tensor, key: Tensor, value: Tensor,
                 blocked_mask: Tensor | None = None) -> AttentionOutput:
