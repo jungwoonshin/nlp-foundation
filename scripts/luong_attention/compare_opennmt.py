@@ -20,13 +20,13 @@ sys.path.insert(0, str(ROOT))
 import torch
 from torch import nn
 from torch.nn import functional as F
-from seq_to_seq.attention.config import LuongConfig
-from seq_to_seq.attention.data.corpus import load_parallel_lines
-from seq_to_seq.attention.data.dataset import process_pairs
-from seq_to_seq.attention.data.vocab import Vocab
-from seq_to_seq.attention.eval.metrics import evaluate_perplexity, ids_to_tokens
-from seq_to_seq.attention.model.nmt import LuongNMT
-from seq_to_seq.attention.training.loop import fit, initialize_parameters, _clip_gradients
+from lstm_attention.attention.config import LuongConfig
+from lstm_attention.attention.data.corpus import load_parallel_lines
+from lstm_attention.attention.data.dataset import process_pairs
+from lstm_attention.attention.data.vocab import Vocab
+from lstm_attention.attention.eval.metrics import evaluate_perplexity, ids_to_tokens
+from lstm_attention.attention.model.nmt import LuongNMT
+from lstm_attention.attention.training.loop import fit, initialize_parameters, _clip_gradients
 
 OFFICIAL_SHA = '32f8564e39d4a3d30fa57038e44f4a3dbdc2068c'
 OPENNMT_SHA = '97111d97551c24857076a4102eabdb468b35cff4'
@@ -200,7 +200,7 @@ def main():
     train, valid, test = [process_pairs(p, *vocabs, config, filter_length=False) for p in all_pairs]
     for side, vocab in [('source', train.src_vocab), ('target', train.tgt_vocab)]:
         (result_dir/f'{side}-vocab.json').write_text(json.dumps(vocab.id_to_token, ensure_ascii=False), encoding='utf-8')
-    code_files = sorted((ROOT/'seq_to_seq'/'attention').rglob('*.py')) + [Path(__file__)]
+    code_files = sorted((ROOT/'lstm_attention'/'attention').rglob('*.py')) + [Path(__file__)]
     code_hashes = {str(p.relative_to(ROOT)): sha(p) for p in code_files}
     metadata = dict(config=asdict(config), gpu=torch.cuda.get_device_name(0), torch=torch.__version__,
         cuda=torch.version.cuda, python=sys.version, official_sha=OFFICIAL_SHA, opennmt_sha=OPENNMT_SHA,

@@ -7,13 +7,13 @@ from unittest import mock
 import torch
 from torch import nn
 
-from seq_to_seq.attention.config import LuongConfig
-from seq_to_seq.attention.data.dataset import LengthSortedBatchSampler, ParallelDataset, smoke_parallel
-from seq_to_seq.attention.data.vocab import BOS_ID, EOS_ID, build_vocab
-from seq_to_seq.attention.model.local_attention import LocalAttention
-from seq_to_seq.attention.model.lstm import LSTMCell
-from seq_to_seq.attention.model.nmt import LuongNMT
-from seq_to_seq.attention.training.loop import initialize_parameters
+from lstm_attention.attention.config import LuongConfig
+from lstm_attention.attention.data.dataset import LengthSortedBatchSampler, ParallelDataset, smoke_parallel
+from lstm_attention.attention.data.vocab import BOS_ID, EOS_ID, build_vocab
+from lstm_attention.attention.model.local_attention import LocalAttention
+from lstm_attention.attention.model.lstm import LSTMCell
+from lstm_attention.attention.model.nmt import LuongNMT
+from lstm_attention.attention.training.loop import initialize_parameters
 
 
 class OfficialConventionsTests(unittest.TestCase):
@@ -65,7 +65,7 @@ class OfficialConventionsTests(unittest.TestCase):
         before = model.weight.detach().clone()
         initialize_parameters(model, seed=7)
         torch.testing.assert_close(model.weight, before)
-        with mock.patch("seq_to_seq.attention.training.loop.time.time_ns", return_value=123), \
+        with mock.patch("lstm_attention.attention.training.loop.time.time_ns", return_value=123), \
              mock.patch("torch.manual_seed") as seed:
             initialize_parameters(model, seed=0)
         seed.assert_called_once_with(123)

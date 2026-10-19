@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from seq_to_seq.foundation.common.training import run_reverse
-from seq_to_seq.foundation.stacked_rnn.model import Seq2Seq
+from lstm_attention.foundation.common.training import run_reverse
+from lstm_attention.foundation.stacked_rnn.model import Seq2Seq
 
 NUM_LAYERS = 2
 

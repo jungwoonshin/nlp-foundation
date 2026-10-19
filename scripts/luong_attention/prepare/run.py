@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from scripts.paths import DATA_DIR
-from seq_to_seq.attention.data.corpus import count_parallel_lines
-from seq_to_seq.attention.data.download import download_iwslt15
+from lstm_attention.attention.data.corpus import count_parallel_lines
+from lstm_attention.attention.data.download import download_iwslt15
 
 
 def prepare_iwslt15(data_dir: Path) -> Path:

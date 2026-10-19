@@ -10,9 +10,9 @@ from unittest import mock
 import torch
 from torch.nn import functional as F
 
-from seq_to_seq.attention.config import LuongConfig
-from seq_to_seq.attention.data.corpus import filter_by_length, load_parallel_lines, tokenize
-from seq_to_seq.attention.data.dataset import (
+from lstm_attention.attention.config import LuongConfig
+from lstm_attention.attention.data.corpus import filter_by_length, load_parallel_lines, tokenize
+from lstm_attention.attention.data.dataset import (
     ParallelDataset,
     pad_collate,
     process_pairs,
@@ -20,8 +20,8 @@ from seq_to_seq.attention.data.dataset import (
     smoke_parallel,
     trim_prediction,
 )
-from seq_to_seq.attention.data.download import IWSLT_FILES, download_iwslt15
-from seq_to_seq.attention.data.vocab import (
+from lstm_attention.attention.data.download import IWSLT_FILES, download_iwslt15
+from lstm_attention.attention.data.vocab import (
     BOS_ID,
     EOS_ID,
     PAD_ID,
@@ -29,14 +29,14 @@ from seq_to_seq.attention.data.vocab import (
     build_vocab,
     load_stanford_vocab,
 )
-from seq_to_seq.attention.eval.bleu import corpus_bleu
-from seq_to_seq.attention.eval.metrics import evaluate_bleu, evaluate_exact_match, evaluate_perplexity
-from seq_to_seq.attention.model.decoder import AttentionalDecoder
-from seq_to_seq.attention.model.encoder import StackedLSTMEncoder
-from seq_to_seq.attention.model.global_attention import GlobalAttention
-from seq_to_seq.attention.model.nmt import LuongNMT
-from seq_to_seq.attention.training.dummy import DummyNMT
-from seq_to_seq.attention.training.loop import fit, initialize_parameters, learning_rate_for_epoch
+from lstm_attention.attention.eval.bleu import corpus_bleu
+from lstm_attention.attention.eval.metrics import evaluate_bleu, evaluate_exact_match, evaluate_perplexity
+from lstm_attention.attention.model.decoder import AttentionalDecoder
+from lstm_attention.attention.model.encoder import StackedLSTMEncoder
+from lstm_attention.attention.model.global_attention import GlobalAttention
+from lstm_attention.attention.model.nmt import LuongNMT
+from lstm_attention.attention.training.dummy import DummyNMT
+from lstm_attention.attention.training.loop import fit, initialize_parameters, learning_rate_for_epoch
 
 
 class LuongConfigTests(unittest.TestCase):
@@ -132,7 +132,7 @@ class DownloadTests(unittest.TestCase):
             def boom(*args: object, **kwargs: object) -> None:
                 raise AssertionError("should not download")
 
-            with mock.patch("seq_to_seq.attention.data.download._download_file", boom):
+            with mock.patch("lstm_attention.attention.data.download._download_file", boom):
                 dest = download_iwslt15(data_dir)
             self.assertEqual(dest, raw)
 

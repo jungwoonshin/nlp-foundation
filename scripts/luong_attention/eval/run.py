@@ -8,16 +8,16 @@ from pathlib import Path
 import torch
 
 from scripts.luong_attention.prepare import prepare_iwslt15
-from seq_to_seq.attention.config import LuongConfig
-from seq_to_seq.attention.data.dataset import process_parallel, smoke_parallel
-from seq_to_seq.attention.data.vocab import load_stanford_vocab
-from seq_to_seq.attention.eval.metrics import (
+from lstm_attention.attention.config import LuongConfig
+from lstm_attention.attention.data.dataset import process_parallel, smoke_parallel
+from lstm_attention.attention.data.vocab import load_stanford_vocab
+from lstm_attention.attention.eval.metrics import (
     evaluate_bleu,
     evaluate_exact_match,
     evaluate_perplexity,
 )
-from seq_to_seq.attention.model.nmt import LuongNMT
-from seq_to_seq.attention.training.loop import ROOT, device, initialize_parameters, log_corpus
+from lstm_attention.attention.model.nmt import LuongNMT
+from lstm_attention.attention.training.loop import ROOT, device, initialize_parameters, log_corpus
 
 DATA_DIR = ROOT / "data"
 

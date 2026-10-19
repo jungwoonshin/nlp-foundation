@@ -8,8 +8,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from seq_to_seq.attention.config import LuongConfig
-from seq_to_seq.attention.training.loop import _clip_gradients, fit
+from lstm_attention.attention.config import LuongConfig
+from lstm_attention.attention.training.loop import _clip_gradients, fit
 
 
 class LuongTrainingTests(unittest.TestCase):

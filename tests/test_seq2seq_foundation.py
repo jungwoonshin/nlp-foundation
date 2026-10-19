@@ -5,20 +5,20 @@ import unittest
 import torch
 from torch.nn import functional as F
 
-from seq_to_seq.foundation.common.dataset import (
+from lstm_attention.foundation.common.dataset import (
     BOS_ID,
     EOS_ID,
     PAD_ID,
     ProcessedReverse,
     ReverseDataset,
 )
-from seq_to_seq.foundation.common.training import evaluate, fit
-from seq_to_seq.foundation.simple_rnn.model import Seq2Seq as SimpleSeq2Seq
-from seq_to_seq.foundation.simple_rnn.model import copy_into_torch as copy_simple
-from seq_to_seq.foundation.stacked_lstm.model import Seq2Seq as StackedLSTMSeq2Seq
-from seq_to_seq.foundation.stacked_lstm.model import copy_into_torch as copy_lstm
-from seq_to_seq.foundation.stacked_rnn.model import Seq2Seq as StackedRNNSeq2Seq
-from seq_to_seq.foundation.stacked_rnn.model import copy_into_torch as copy_stacked_rnn
+from lstm_attention.foundation.common.training import evaluate, fit
+from lstm_attention.foundation.simple_rnn.model import Seq2Seq as SimpleSeq2Seq
+from lstm_attention.foundation.simple_rnn.model import copy_into_torch as copy_simple
+from lstm_attention.foundation.stacked_lstm.model import Seq2Seq as StackedLSTMSeq2Seq
+from lstm_attention.foundation.stacked_lstm.model import copy_into_torch as copy_lstm
+from lstm_attention.foundation.stacked_rnn.model import Seq2Seq as StackedRNNSeq2Seq
+from lstm_attention.foundation.stacked_rnn.model import copy_into_torch as copy_stacked_rnn
 
 VOCAB_SIZE = 12
 EMBED_DIM = 8

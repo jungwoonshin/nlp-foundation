@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from seq_to_seq.foundation.common.training import run_reverse
-from seq_to_seq.foundation.simple_rnn.model import Seq2Seq
+from lstm_attention.foundation.common.training import run_reverse
+from lstm_attention.foundation.simple_rnn.model import Seq2Seq
 
 
 def simple_rnn(*, smoke: bool = False) -> None:

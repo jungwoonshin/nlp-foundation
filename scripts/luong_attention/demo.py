@@ -18,13 +18,13 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 import torch
-from seq_to_seq.attention.config import LuongConfig
-from seq_to_seq.attention.data.corpus import load_parallel_lines
-from seq_to_seq.attention.data.dataset import process_pairs
-from seq_to_seq.attention.data.vocab import Vocab
-from seq_to_seq.attention.eval.metrics import evaluate_bleu, evaluate_perplexity, ids_to_tokens
-from seq_to_seq.attention.training.loop import fit, initialize_parameters
-from seq_to_seq.attention.model.nmt import LuongNMT
+from lstm_attention.attention.config import LuongConfig
+from lstm_attention.attention.data.corpus import load_parallel_lines
+from lstm_attention.attention.data.dataset import process_pairs
+from lstm_attention.attention.data.vocab import Vocab
+from lstm_attention.attention.eval.metrics import evaluate_bleu, evaluate_perplexity, ids_to_tokens
+from lstm_attention.attention.training.loop import fit, initialize_parameters
+from lstm_attention.attention.model.nmt import LuongNMT
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--kinds', nargs='+', choices=('local_m', 'local_p'), default=['local_m', 'local_p'])
@@ -75,9 +75,11 @@ manifest['vocabulary_policy'] = 'train only; frequency descending; first occurre
 if args.prepare_only:
     print(json.dumps(manifest, indent=2))
     raise SystemExit(0)
-tracked = subprocess.check_output(['git', 'ls-files'], cwd=ROOT, text=True).splitlines()
+tracked = subprocess.check_output(
+    ['git', 'ls-files', '--cached', '--others', '--exclude-standard'], cwd=ROOT, text=True
+).splitlines()
 code_hashes = {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest()
-               for p in tracked if p.endswith('.py')}
+               for p in tracked if p.endswith('.py') and (ROOT / p).is_file()}
 head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
 patch = subprocess.check_output(['git', 'diff', '--binary'], cwd=ROOT)
 (base / (args.label + '-working-tree.patch')).write_bytes(patch)
@@ -126,7 +128,7 @@ for kind in args.kinds:
         'training_truncation': 'source reversed before truncation to 50; target truncated to 50; no sentence filtering',
         'parameters': None, 'checkpoint_policy': 'final epoch 10',
         'batch_sorting': 'original target length before truncation; shuffle batches each epoch',
-        'trainer_sha256': hashlib.sha256((args.baseline_loop or ROOT / 'seq_to_seq/attention/training/loop.py').read_bytes()).hexdigest(), 'tracked_code_sha256_before': code_hashes,
+        'trainer_sha256': hashlib.sha256((args.baseline_loop or ROOT / 'lstm_attention/attention/training/loop.py').read_bytes()).hexdigest(), 'tracked_code_sha256_before': code_hashes,
         'source': 'authors official demo; not the full-scale paper benchmark',
     }
     for name, vocab in zip(('source', 'target'), (train.src_vocab, train.tgt_vocab)):

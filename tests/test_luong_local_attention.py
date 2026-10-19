@@ -7,11 +7,11 @@ from unittest import mock
 import torch
 from torch.nn import functional as F
 
-from seq_to_seq.attention.config import LuongConfig
-from seq_to_seq.attention.model.global_attention import GlobalAttention
-from seq_to_seq.attention.model.local_attention import LocalAttention
-from seq_to_seq.attention.model.nmt import LuongNMT
-from seq_to_seq.attention.model.types import AttentionOutput
+from lstm_attention.attention.config import LuongConfig
+from lstm_attention.attention.model.global_attention import GlobalAttention
+from lstm_attention.attention.model.local_attention import LocalAttention
+from lstm_attention.attention.model.nmt import LuongNMT
+from lstm_attention.attention.model.types import AttentionOutput
 
 
 def reference_attention(
