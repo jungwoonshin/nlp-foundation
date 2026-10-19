@@ -1,6 +1,7 @@
 """Left-padded sources, right-padded targets, and length-grouped token-budget batches."""
 from dataclasses import dataclass
 import torch
+import numpy as np
 from torch.utils.data import Dataset, DataLoader, Sampler
 from transformer.data.vocab import EOS_ID, PAD_ID, Vocab
 
@@ -42,35 +43,47 @@ def pad_collate(rows):
     return batch
 
 
+def reference_collate(rows):
+    """Fairseq sorts each mini-batch by descending source length."""
+    return pad_collate(sorted(rows, key=lambda row: len(row['src']), reverse=True))
+
+
 class TokenBatchSampler(Sampler):
-    def __init__(self, dataset, max_tokens=4096, *, shuffle=True, seed=1, batch_size=None):
+    """Pinned Fairseq stable length ordering, batch multiples, and epoch shuffling."""
+    def __init__(self, dataset, max_tokens=4096, *, shuffle=True, seed=1,
+                 batch_size=None, epoch=1, required_multiple=8):
         self.dataset, self.max_tokens = dataset, max_tokens
         self.shuffle, self.seed, self.batch_size = shuffle, seed, batch_size
+        self.epoch, self.required_multiple = epoch, required_multiple
         if max_tokens < 1 or (batch_size is not None and batch_size < 1):
             raise ValueError("batch limits must be positive")
 
     def __iter__(self):
-        generator = torch.Generator().manual_seed(self.seed)
-        indices = (torch.randperm(len(self.dataset), generator=generator).tolist()
-                   if self.shuffle else list(range(len(self.dataset))))
-        if self.shuffle:
-            indices.sort(key=lambda i: max(len(self.dataset.rows[i][0]), len(self.dataset.rows[i][1]) + 1))
-        batches, current, width = [], [], 0
-        for i in indices:
-            src, tgt = self.dataset.rows[i]
-            size = max(len(src), len(tgt) + 1)
+        rng = np.random.RandomState(self.seed)
+        indices = rng.permutation(len(self.dataset)) if self.shuffle else np.arange(len(self.dataset))
+        src = np.array([len(r[0]) for r in self.dataset.rows])
+        tgt = np.array([len(r[1]) + 1 for r in self.dataset.rows])
+        indices = indices[np.argsort(tgt[indices], kind='mergesort')]
+        indices = indices[np.argsort(src[indices], kind='mergesort')]
+        batches, current, sizes = [], [], []
+        for index in indices:
+            i = int(index)
+            size = int(max(src[i], tgt[i]))
             if size > self.max_tokens:
                 raise ValueError("one example exceeds token budget")
-            if current and ((max(width, size) * (len(current) + 1) > self.max_tokens)
+            sizes.append(size)
+            if current and (max(sizes) * (len(current) + 1) > self.max_tokens
                             or (self.batch_size is not None and len(current) >= self.batch_size)):
-                batches.append(current)
-                current, width = [], 0
+                m = self.required_multiple
+                split = max(m * (len(current) // m), len(current) % m)
+                batches.append(current[:split])
+                current, sizes = current[split:], sizes[split:]
             current.append(i)
-            width = max(width, size)
         if current:
             batches.append(current)
         if self.shuffle:
-            batches = [batches[i] for i in torch.randperm(len(batches), generator=generator).tolist()]
+            order = np.random.RandomState(self.seed + self.epoch).permutation(len(batches))
+            batches = [batches[i] for i in order]
         yield from batches
 
     def __len__(self):
@@ -82,10 +95,10 @@ class ProcessedParallel:
     dataset: ParallelDataset
     vocab: Vocab
 
-    def dataloader(self, max_tokens=4096, *, shuffle=False, seed=1, batch_size=None):
+    def dataloader(self, max_tokens=4096, *, shuffle=False, seed=1, batch_size=None, epoch=1):
         return DataLoader(self.dataset, batch_sampler=TokenBatchSampler(
-            self.dataset, max_tokens, shuffle=shuffle, seed=seed, batch_size=batch_size),
-            collate_fn=pad_collate, generator=torch.Generator().manual_seed(seed))
+            self.dataset, max_tokens, shuffle=shuffle, seed=seed, batch_size=batch_size, epoch=epoch),
+            collate_fn=reference_collate, generator=torch.Generator().manual_seed(seed))
 
 
 def process_pairs(pairs, vocab, max_positions=1024):
