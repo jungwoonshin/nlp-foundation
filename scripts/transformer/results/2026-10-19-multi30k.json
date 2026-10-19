@@ -1,0 +1,218 @@
+{
+  "date": "2026-10-19",
+  "benchmark": "Multi30k English-to-German Test2016, text-only Transformer-Tiny",
+  "paper": "Wu et al., ACL 2021, Good for Misconceived Reasons",
+  "reference_url": "https://github.com/LividWo/Revisit-MMT",
+  "reference_commit": "dc368d0af8d60270b8f4aaa2f3ac58771c551da3",
+  "published_bleu": 41.02,
+  "measured_bleu": 40.84336314407604,
+  "bleu_difference": -0.1766368559239666,
+  "exact_match_to_reported_two_decimals": false,
+  "test_perplexity": 4.807786586784195,
+  "test_examples": 1000,
+  "independent_sacrebleu_score": 40.843363144076065,
+  "independent_sacrebleu_signature": "tokenize=none, smooth=none, effective_order=False",
+  "bleu_details": {
+    "precisions": [
+      70.7622579316028,
+      47.184553210597215,
+      34.05032067094228,
+      24.47728516694034
+    ],
+    "bp": 1.0,
+    "system_length": 12135,
+    "reference_length": 12103
+  },
+  "training": {
+    "updates": 5394,
+    "epochs": 87,
+    "stop_reason": "validation patience exhausted",
+    "patience": 10,
+    "best_validation_epoch": 77,
+    "best_validation_loss": 2.777692306530356,
+    "final_validation_perplexity": 5.197424975785076
+  },
+  "averaged_checkpoints": [
+    ".tmp\\transformer-multi30k\\run-2026-10-19\\checkpoint_epoch_0078.pt",
+    ".tmp\\transformer-multi30k\\run-2026-10-19\\checkpoint_epoch_0079.pt",
+    ".tmp\\transformer-multi30k\\run-2026-10-19\\checkpoint_epoch_0080.pt",
+    ".tmp\\transformer-multi30k\\run-2026-10-19\\checkpoint_epoch_0081.pt",
+    ".tmp\\transformer-multi30k\\run-2026-10-19\\checkpoint_epoch_0082.pt",
+    ".tmp\\transformer-multi30k\\run-2026-10-19\\checkpoint_epoch_0083.pt",
+    ".tmp\\transformer-multi30k\\run-2026-10-19\\checkpoint_epoch_0084.pt",
+    ".tmp\\transformer-multi30k\\run-2026-10-19\\checkpoint_epoch_0085.pt",
+    ".tmp\\transformer-multi30k\\run-2026-10-19\\checkpoint_epoch_0086.pt",
+    ".tmp\\transformer-multi30k\\run-2026-10-19\\checkpoint_epoch_0087.pt"
+  ],
+  "config": {
+    "profile": "multi30k_tiny",
+    "encoder_layers": 4,
+    "decoder_layers": 4,
+    "d_model": 128,
+    "d_ff": 256,
+    "heads": 4,
+    "dropout": 0.3,
+    "attention_dropout": 0.0,
+    "activation_dropout": 0.0,
+    "max_positions": 1024,
+    "max_tokens": 4096,
+    "batch_size": null,
+    "accumulation_steps": 2,
+    "max_updates": 8000,
+    "max_epochs": 1000,
+    "patience": 10,
+    "label_smoothing": 0.1,
+    "adam_betas": [
+      0.9,
+      0.98
+    ],
+    "adam_eps": 1e-08,
+    "learning_rate": 0.005,
+    "warmup_init_lr": 1e-07,
+    "warmup_updates": 2000,
+    "fixed_lr": false,
+    "grad_clip": 25.0,
+    "seed": 1,
+    "beam_size": 5,
+    "length_penalty": 1.0,
+    "max_decode_tokens": 200
+  },
+  "data_manifest": {
+    "reference_commit": "dc368d0af8d60270b8f4aaa2f3ac58771c551da3",
+    "files": {
+      "train.en": {
+        "url": "https://raw.githubusercontent.com/LividWo/Revisit-MMT/dc368d0af8d60270b8f4aaa2f3ac58771c551da3/data/multi30k-en-de/train.en",
+        "sha256": "0ffe3e3bac16e6aa33ef0dd6a7dca81587479b0d18dff0db2a92ac3f32b00c86",
+        "bytes": 1898472
+      },
+      "train.de": {
+        "url": "https://raw.githubusercontent.com/LividWo/Revisit-MMT/dc368d0af8d60270b8f4aaa2f3ac58771c551da3/data/multi30k-en-de/train.de",
+        "sha256": "b2c74def7ec129f7ea7023a51501c77174c377ef06c6ccc2f031adcfb5cfadbd",
+        "bytes": 2269411
+      },
+      "valid.en": {
+        "url": "https://raw.githubusercontent.com/LividWo/Revisit-MMT/dc368d0af8d60270b8f4aaa2f3ac58771c551da3/data/multi30k-en-de/valid.en",
+        "sha256": "193d0d18fef5d1bc9d1cddafa13a644de3c5d6a24b45ac44476dcc5e96bfac6e",
+        "bytes": 67101
+      },
+      "valid.de": {
+        "url": "https://raw.githubusercontent.com/LividWo/Revisit-MMT/dc368d0af8d60270b8f4aaa2f3ac58771c551da3/data/multi30k-en-de/valid.de",
+        "sha256": "eeb95680d6a06eafb13e3494eed9f9fa99783b892f4a3c72dd36e7ce2e000b68",
+        "bytes": 82295
+      },
+      "test.2016.en": {
+        "url": "https://raw.githubusercontent.com/LividWo/Revisit-MMT/dc368d0af8d60270b8f4aaa2f3ac58771c551da3/data/multi30k-en-de/test.2016.en",
+        "sha256": "13b5fe3f92f78c54446d66afcaaa0a00a33ab653a8411f16812c9c5ca3795d6d",
+        "bytes": 65416
+      },
+      "test.2016.de": {
+        "url": "https://raw.githubusercontent.com/LividWo/Revisit-MMT/dc368d0af8d60270b8f4aaa2f3ac58771c551da3/data/multi30k-en-de/test.2016.de",
+        "sha256": "375c20d50f4c486149a78dfcfb161a430a04ddabe2b7d150f0c7811dc455ac60",
+        "bytes": 75949
+      },
+      "code": {
+        "url": "https://raw.githubusercontent.com/LividWo/Revisit-MMT/dc368d0af8d60270b8f4aaa2f3ac58771c551da3/data/multi30k-en-de/code",
+        "sha256": "5b545f318e49f24367c7399019c9aeb5e3720b6379a08f887c2792af71c37f2a",
+        "bytes": 104973
+      }
+    },
+    "split_pairs": {
+      "train": 29000,
+      "valid": 1014,
+      "test.2016": 1000
+    },
+    "preprocessing": "authors' released joint 10000-merge BPE; no retokenization",
+    "reference_bleu": {
+      "test.2016": 41.02,
+      "scorer": "legacy Fairseq corpus BLEU-4"
+    }
+  },
+  "source_hashes": {
+    "transformer\\__init__.py": "28f69f0fdaadc8ca15055dc3440fc36f2ec6e05c99a4d17879fa327671b8255f",
+    "transformer\\config.py": "cd98ad35c5471f9bb026a9e8825650d76cf106b7efb382e270acdcb7ca0acf10",
+    "transformer\\data\\__init__.py": "c667d90db35163ff38fc3ac035233d8ab9d36616ad42a241884c4445ef427c18",
+    "transformer\\data\\corpus.py": "62ce32e2bb854df5f66562d43653f9551e5b927b7f29546b615117fb5378732e",
+    "transformer\\data\\dataset.py": "9289fd3b6cb2df7fff6f230e8c4e3165e163345e62585397c46ad7fca3acba21",
+    "transformer\\data\\download.py": "45760628e11d226ec710b5b554fdfb530bf433b5ab53b3fce161737d3578c8f2",
+    "transformer\\data\\masks.py": "acb70c3acdfb557333e3b37fd3fa2600ef81fecc19eae0b7c8a454854e8d7931",
+    "transformer\\data\\vocab.py": "b646ea8b4adc2e21e609f2ac733b4de88456547c65d9e46b7a3949401227cd7d",
+    "transformer\\eval\\__init__.py": "7a1af84d6c42fda52496a05dcc98dd2021fd94ea1bcfaa08327d4caf01dddf18",
+    "transformer\\eval\\bleu.py": "dce105eb7af515df5129b1949c61ecc1e9b3a3a3866443ef2ed07be578beb39d",
+    "transformer\\eval\\decoding.py": "0b7ec5e8501095993bd5c864144daac0fc84b38fabc5b8ab3f93e14ffad9c7fb",
+    "transformer\\eval\\metrics.py": "09b7a329c7a3266175e7a4caaf34b8885b97c00ab025c2f91891efcf29839e39",
+    "transformer\\model\\__init__.py": "19eb6193fa7aa38425ebbfd203664a3debcc3207e34a575f61f4c8d935252561",
+    "transformer\\model\\attention.py": "3c1b57fd01a3c420b815b6eea41282d4f5296870067ead5c223a06198d2818c8",
+    "transformer\\model\\decoder.py": "c8832b53d530190d76206e87662ebe5ed43f936753607cd9d78d32d32e64c55b",
+    "transformer\\model\\embeddings.py": "662e869a0f2eeb517fc765043acca86b9395a6c1e919714a6d95b48b8288c6f2",
+    "transformer\\model\\encoder.py": "b8521dba9d8f44a3fae8aed6ab04d7fd21fa1db189c4d8d1d088605a35cb15b7",
+    "transformer\\model\\feed_forward.py": "fc8e11f7ff9a1b417b9b7092dd968be9f452d0027d9b6e434333acd939ffc888",
+    "transformer\\model\\nmt.py": "f23088cab8ca08ed8aa1cdc1eeb1be474e9f3d7a93a5d31a36995b4d9d84b827",
+    "transformer\\model\\normalization.py": "6505247ee7230c32aa88d3a7221fd6e37678619dedd165e34f02a46b4bc2b4ed",
+    "transformer\\model\\positional_encoding.py": "a5870942bb2eeae73a1dacb691c16efe5918b0fe2cd6cc12bf2fea04b3dd467e",
+    "transformer\\model\\types.py": "2278bae22515c9b55841d2373ebcaad873f641d7b1d42c0fff3ef52a74275798",
+    "transformer\\training\\__init__.py": "97b3377819c99ac1c1e3aeda1d8359e8e04a1a57ace8ead78fcf1d5a28763820",
+    "transformer\\training\\adam.py": "0e4d5a5d60e660c8367e6362e0cf3a6fe4bb5d8fc81fa2034bd3e4f17ab4d0e2",
+    "transformer\\training\\checkpoints.py": "bd0ddf9eab6d9542332860d9ea01c7758766c66e93364040ab44ccfd8543b3ae",
+    "transformer\\training\\loop.py": "83d9191bc32ebc34e8f455dfefac0d5a96abb302483c6661784aa33e4f6c6989",
+    "transformer\\training\\loss.py": "9dc93b3add563c1dfeb9e4588425eac8719798196e1702e7de7f5869771694f0",
+    "transformer\\training\\schedule.py": "96d6b18791d90bc5ac46a38398825821c9513b25d4f34c58514f7584907ff8fa",
+    "transformer\\training\\smoke.py": "638c8abcb752858ddc4fcd28c7958ef09fde98bd45d133727e8d9904da021903",
+    "scripts\\transformer\\__init__.py": "e63426cb9776a6a9587c7d99afc922e3e462a0005c09c266a2daeeade4193119",
+    "scripts\\transformer\\eval\\__init__.py": "65271a4717a1d8868af5848ceb2215a4f3abe391cf09afb1d5054d92ecb544d4",
+    "scripts\\transformer\\eval\\run.py": "f2f86c877cf478d8eaf4aa4a57b87129250fa889d8dab2ada37a8d30b7dd9ce1",
+    "scripts\\transformer\\prepare\\__init__.py": "4e08376744fe36f32bea459cb494080fb3ff60712e5b3406431ed66169de5dee",
+    "scripts\\transformer\\prepare\\run.py": "c53c78571664859e8d5b5c0b2c3a05afdd6eafceb2561676c50db05b178f2b71",
+    "scripts\\transformer\\train\\__init__.py": "5b1fac18710374538945e1eda14e007e59d2d53fa7e6f344f5ba7c4b3de72085",
+    "scripts\\transformer\\train\\run.py": "48bbcdf8275a01d4458686a7ac7c1b568c0015783cc855be3d27161d07cdaac9"
+  },
+  "source_unchanged_during_experiment": true,
+  "runtime": {
+    "torch": "2.2.2+cu121",
+    "cuda": "12.1",
+    "gpu": "NVIDIA GeForce RTX 3080"
+  },
+  "checks": {
+    "unit_tests_passed": 117,
+    "layer_parity": {
+      "reference_commit": "dc368d0af8d60270b8f4aaa2f3ac58771c551da3",
+      "positions_exact": true,
+      "adam_exact": true,
+      "encoder_decoder_pass": true,
+      "method": "AST-load unchanged author classes with dependency adapters; copy weights, compare float32 forward; Adam float64",
+      "decoder_max_error": 4.76837158203125e-07
+    },
+    "data_and_loss": {
+      "dictionary_symbols_exact": true,
+      "dictionary_counts_exact": true,
+      "vocab_size": 9712,
+      "label_smoothed_loss_exact": true,
+      "loss_gradient_exact": true
+    },
+    "initialization": {
+      "same_seed_parameter_checks": 129,
+      "mismatched": 0,
+      "first_mismatches": [],
+      "note": "Author embedding and layer constructors; layer norm constants are trivial and not enumerated."
+    },
+    "beam_search": {
+      "seeds": [
+        1,
+        7,
+        9
+      ],
+      "beams": [
+        1,
+        3
+      ],
+      "sequences_match": true,
+      "compatibility_adapter": "torch.div floor semantics for integer out in PyTorch 1.5 source"
+    }
+  },
+  "remaining_differences": [
+    "One GPU accumulating two microbatches, rather than two-GPU DDP: dropout RNG streams and gradient reduction order differ.",
+    "PyTorch 2.2.2/CUDA 12.1 rather than the authors documented PyTorch 1.5.0/CUDA 10.1 environment.",
+    "Uncached full-prefix decoding rather than incremental decoding; equivalent math but different floating-point execution.",
+    "Checkpoint tensors are averaged using float64 accumulation then converted, rather than the reference float32 accumulation."
+  ],
+  "interpretation": "Close, not exact. These are plausible sources of a 0.18-BLEU difference; no controlled ablations establish causation. Initial tested embedding/projection parameters and dictionary match exactly. No test-set tuning or code edits occurred during training/evaluation."
+}
