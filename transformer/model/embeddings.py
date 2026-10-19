@@ -1,5 +1,6 @@
 """Embedding signatures: paper section 3.4; reference shares all three weight matrices."""
 from torch import Tensor, nn
+import torch
 import math
 
 class TokenEmbedding(nn.Module):
@@ -8,6 +9,9 @@ class TokenEmbedding(nn.Module):
         super().__init__()
         self.D_MODEL = d_model
         self.embedding = nn.Embedding(vocab_size, self.D_MODEL, padding_idx=padding_idx)
+        nn.init.normal_(self.embedding.weight, mean=0., std=d_model ** -0.5)
+        with torch.no_grad():
+            self.embedding.weight[padding_idx].zero_()
         self.NORMALIZE_CONSTANT = math.sqrt(self.D_MODEL)
 
     def forward(self, tokens: Tensor) -> Tensor:
