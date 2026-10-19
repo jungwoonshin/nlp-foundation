@@ -1,46 +1,37 @@
-"""Sinusoidal position signatures: section 3.5, with padding-aware reference coordinates."""
-from torch import Tensor, nn
-
+﻿"""Padding-aware sinusoidal positions matching the pinned Revisit-MMT/Fairseq code."""
+import math
 import torch
+from torch import Tensor, nn
+from transformer.data.vocab import PAD_ID
+
 
 class SinusoidalPositionalEncoding(nn.Module):
-    """Add sinusoidal positions to (B,L,d_model).
+    """Add concatenated sine/cosine channels, then embedding dropout.
 
-    Paper: PE(pos,2i)=sin(pos/10000**(2i/d_model)), odd channels use cosine.
-    The small-data reference uses Fairseq sinusoidal channel layout/frequencies,
-    non-PAD cumulative positions plus padding_idx, and zero vectors at PAD.
-    Implement the pinned reference convention for multi30k_tiny, documenting
-    its difference from the paper's interleaved layout. No learned positions.
+    Non-PAD positions begin at padding_idx + 1. PAD contributes no positions;
+    its input embedding is preserved. This differs from paper interleaving.
     """
-
     positional_encoder: Tensor
 
-    def __init__(self, d_model: int, max_positions: int = 1024, dropout: float = .3):
+    def __init__(self, d_model: int, max_positions: int = 1024,
+                 dropout: float = .3, padding_idx: int = PAD_ID):
         super().__init__()
-        # (pos, i)
-        pos = torch.arange(max_positions, dtype=torch.float32)[:, None]  # (POS, 1)
-        dims = torch.arange(0, d_model, 2, dtype=torch.float32)[None, :] # (1, D_MODEL//2)
-        # i = torch.arange(d_model, dtype=torch.float32)[None, :]      # (1, I)
-        angles = pos / (10000.0 ** (dims / d_model)) # (POS, I)
-
-        pe = torch.empty(max_positions, d_model, device=angles.device, dtype=angles.dtype)
-        pe[:, 0::2] = torch.sin(angles)  # dimensions 0, 2, 4, ...
-        pe[:, 1::2] = torch.cos(angles[:, :d_model // 2])  # dimensions 1, 3, 5, ...
+        if d_model < 4 or max_positions < 1:
+            raise ValueError("reference sinusoids require d_model >= 4 and max_positions > 0")
+        self.padding_idx, self.max_positions = padding_idx, max_positions
+        half = d_model // 2
+        frequencies = torch.exp(torch.arange(half, dtype=torch.float32)
+                                * (-math.log(10000.) / (half - 1)))
+        positions = torch.arange(max_positions + padding_idx + 1, dtype=torch.float32)
+        angles = positions[:, None] * frequencies[None, :]
+        pe = torch.cat((angles.sin(), angles.cos()), dim=1)
+        if d_model % 2:
+            pe = torch.cat((pe, torch.zeros(len(positions), 1)), dim=1)
+        pe[padding_idx].zero_()
         self.register_buffer("positional_encoder", pe)
         self.dropout = nn.Dropout(dropout)
 
-    # x: (B,L,d_model)
     def forward(self, x: Tensor, padding_mask: Tensor) -> Tensor:
-        """padding_mask: (B,L), True at PAD; zero the full PAD vectors.
-
-        Apply dropout to embeddings plus positions; output has the shape of x.
-        """
-
-        # padding_mask: (B, L), True at PAD
         non_pad = (~padding_mask).long()
-        position_ids = (non_pad.cumsum(dim=1) - 1).clamp_min(0)
-
-        positions = self.positional_encoder[position_ids]
-        positions = positions.masked_fill(padding_mask.unsqueeze(-1), 0.0)
-
-        return self.dropout(x + positions)
+        ids = non_pad.cumsum(dim=1) * non_pad + self.padding_idx
+        return self.dropout(x + self.positional_encoder[ids].to(x.dtype))
