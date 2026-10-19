@@ -36,6 +36,8 @@ def main(argv=None):
     parser.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
     parser.add_argument("--threads", type=int, default=1)
     args = parser.parse_args(argv)
+    if args.output_dir.exists() and any(args.output_dir.iterdir()) and args.resume is None:
+        parser.error('output directory is not empty; choose a fresh directory or use --resume')
     config = TransformerConfig.smoke() if args.smoke else TransformerConfig()
     config.validate()
     if args.threads < 1:
@@ -50,11 +52,6 @@ def main(argv=None):
         train_pairs, valid_pairs = pairs, pairs
         provenance["data_manifest"] = {"smoke": True, "evaluation_split": "same offline fixture; infrastructure only"}
     else:
-        # Fail clearly before a potentially unnecessary dataset download.
-        try:
-            TransformerNMT(4, config)
-        except NotImplementedError as error:
-            parser.exit(2, f"{error}. Use --smoke for infrastructure verification.\n")
         directory = download_multi30k(args.data_dir)
         train_pairs = load_pairs(directory / "train.en", directory / "train.de")
         valid_pairs = load_pairs(directory / "valid.en", directory / "valid.de")
@@ -64,7 +61,9 @@ def main(argv=None):
     model = (DummyTransformer(len(vocab), config.d_model) if args.smoke else TransformerNMT(len(vocab), config))
     metadata = {**provenance, "config": asdict(config), "vocab": vocab.to_dict(),
                 "model_kind": "dummy_infrastructure" if args.smoke else "transformer",
-                "reference_bleu": None if args.smoke else 41.02}
+              "reference_bleu": None if args.smoke else 41.02,
+              "reference_commit": "dc368d0af8d60270b8f4aaa2f3ac58771c551da3",
+              "runtime_difference": "Single GPU with two microbatches per update instead of two-GPU DDP."}
     state = fit(model, train, valid, config, chosen, output_dir=args.output_dir, metadata=metadata, resume=args.resume)
     report = {"kind": metadata["model_kind"], "training_state": state,
               "notice": "Dummy metrics verify infrastructure only; not Transformer results." if args.smoke else ""}
