@@ -7,6 +7,7 @@ from transformer.config import TransformerConfig
 from transformer.training.checkpoints import load_checkpoint, save_checkpoint
 from transformer.training.loss import token_loss
 from transformer.training.schedule import learning_rate
+from transformer.training.adam import ReferenceAdam
 from transformer.eval.metrics import evaluate_perplexity
 
 
@@ -37,7 +38,7 @@ def fit(model, train, valid, config: TransformerConfig, device, *, output_dir,
         metadata=None, resume=None, verbose=True):
     config.validate()
     model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate(0, config),
+    optimizer = ReferenceAdam(model.parameters(), lr=learning_rate(0, config),
                                  betas=config.adam_betas, eps=config.adam_eps)
     metadata = dict(metadata or {})
     metadata.setdefault("config", asdict(config))
@@ -64,16 +65,20 @@ def fit(model, train, valid, config: TransformerConfig, device, *, output_dir,
            and state["bad_epochs"] < config.patience):
         epoch = state["epoch"]
         model.train()
-        loader = train.dataloader(config.max_tokens, shuffle=True, seed=config.seed + epoch,
-                                  batch_size=config.batch_size)
+        loader = train.dataloader(config.max_tokens, shuffle=True, seed=config.seed,
+                                  batch_size=config.batch_size, epoch=epoch)
         total_batches = len(loader)
         iterator = itertools.islice(iter(loader), state["next_batch"], None)
         while group := list(itertools.islice(iterator, config.accumulation_steps)):
+            # The reference resets dropout RNG at each update; resume is reproducible.
+            torch.manual_seed(config.seed + state['updates'])
             for parameters in optimizer.param_groups:
                 parameters["lr"] = learning_rate(state["updates"], config)
             train_update(model, group, optimizer, config, device)
             state["updates"] += 1
             state["next_batch"] += len(group)
+            if verbose and state['updates'] % 100 == 0:
+                print(f"update={state['updates']} epoch={epoch} lr={optimizer.param_groups[0]['lr']:.7f}", flush=True)
             if state["updates"] >= config.max_updates:
                 break
         metrics = evaluate_perplexity(model, valid, device, max_tokens=config.max_tokens,
@@ -87,6 +92,10 @@ def fit(model, train, valid, config: TransformerConfig, device, *, output_dir,
                                  "epoch_complete": completed, "validation": metrics})
         filename = f"checkpoint_epoch_{epoch:04d}.pt" if completed else "checkpoint_partial.pt"
         save_checkpoint(output_dir / filename, model, optimizer, state, metadata)
+        if completed:
+            # Match retention of the last ten complete epoch checkpoints.
+            for old in sorted(output_dir.glob('checkpoint_epoch_*.pt'))[:-10]:
+                old.unlink()
         if verbose:
             print(f"epoch={epoch} updates={state['updates']} valid_ppl={metrics['perplexity']:.4f} complete={completed}")
     return state
