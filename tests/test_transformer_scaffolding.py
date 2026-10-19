@@ -1,4 +1,4 @@
-"""Infrastructure checks; the real Transformer remains an intentional stub."""
+"""Transformer infrastructure and integrated-model checks."""
 import copy
 from dataclasses import replace
 import importlib
@@ -107,7 +107,7 @@ class TransformerScaffoldingTests(unittest.TestCase):
         for indices in batches:
             batch = pad_collate([p.dataset[i] for i in indices])
             self.assertLessEqual(max(batch["src"].size(1), batch["tgt_in"].size(1)) * len(indices), 15)
-        self.assertEqual([i for b in TokenBatchSampler(p.dataset, 15, shuffle=False) for i in b], list(range(4)))
+        self.assertEqual(sorted(i for b in TokenBatchSampler(p.dataset, 15, shuffle=False) for i in b), list(range(4)))
         with self.assertRaises(ValueError):
             list(TokenBatchSampler(p.dataset, 1))
 
@@ -286,23 +286,21 @@ class TransformerScaffoldingTests(unittest.TestCase):
         self.assertEqual(remove_bpe(["ein", "kle@@", "ines", "haus"]), ["ein", "kleines", "haus"])
         self.assertAlmostEqual(corpus_bleu([sentence[:4]], [sentence]), 100 * math.exp(1 - 5 / 4))
 
-    def test_all_model_constructors_are_stubs_and_scripts_discovered(self):
-        modules = {
-            "embeddings": [("TokenEmbedding", (8, 16))],
-            "positional_encoding": [("SinusoidalPositionalEncoding", (16,))],
-            "attention": [("MultiHeadAttention", (16, 2))],
-            "feed_forward": [("PositionwiseFeedForward", (16, 32))],
-            "normalization": [("LayerNorm", (16,)), ("ResidualConnection", (16,))],
-            "encoder": [("EncoderLayer", (TransformerConfig(),)), ("Encoder", (TransformerConfig(),))],
-            "decoder": [("DecoderLayer", (TransformerConfig(),)), ("Decoder", (TransformerConfig(),))],
-            "nmt": [("TransformerNMT", (8, TransformerConfig()))],
-        }
-        for module, constructors in modules.items():
-            for name, args in constructors:
-                with self.subTest(name=name), self.assertRaises(NotImplementedError):
-                    getattr(importlib.import_module(f"transformer.model.{module}"), name)(*args)
+    def test_real_model_forward_backward_and_scripts_discovered(self):
+        from transformer.model.nmt import TransformerNMT
+        from transformer.model.normalization import ResidualConnection
+        c = replace(TransformerConfig.smoke(), encoder_layers=2, decoder_layers=2)
+        model = TransformerNMT(16, c)
+        src = torch.tensor([[PAD_ID, 4, EOS_ID], [5, 6, EOS_ID]])
+        tgt = torch.tensor([[EOS_ID, 7], [EOS_ID, 8]])
+        logits = model(src, src.ne(PAD_ID).sum(1), tgt)
+        self.assertEqual(logits.shape, (2, 2, 16))
+        self.assertTrue(torch.isfinite(logits).all())
+        logits.square().sum().backward()
+        self.assertTrue(all(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters()))
+        self.assertIs(model.output_projection.weight, model.token_embeddings.embedding.weight)
         with self.assertRaises(NotImplementedError):
-            scaled_dot_product_attention(None, None, None)
+            ResidualConnection(16)
         for stage in ("prepare", "train", "eval"):
             self.assertIn("transformer", available_models(stage))
 
