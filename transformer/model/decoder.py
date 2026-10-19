@@ -24,17 +24,18 @@ class DecoderLayer(nn.Module):
         """x=(B,T,d_model), memory=(B,S,d_model); return shape of x.
 
         self_mask=(B,1,T,T); source_mask=(B,1,1,S), both True for blocked keys.
+        B=batch size, T=target length, S=source length, d_model=model width.
         Cross-attention Q comes from decoder, K/V from encoder memory.
         """
-        attention_output = self.first_sublayer(x, x, x, self_mask).context
-        query = self.first_layernorm(x + self.dropout(attention_output))
+        self_attention_output = self.first_sublayer(x, x, x, self_mask).context  # (B,T,d_model)
+        query = self.first_layernorm(x + self.dropout(self_attention_output))  # (B,T,d_model)
         
-        attention_output = self.second_sublayer(query, memory, memory, source_mask).context
-        x = self.second_layernorm(query + self.dropout(attention_output))
+        cross_attention_output = self.second_sublayer(query, memory, memory, source_mask).context  # (B,T,d_model)
+        x = self.second_layernorm(query + self.dropout(cross_attention_output))  # (B,T,d_model)
         
-        ffn_x = self.third_sublayer(x)
-        x = self.third_layernorm(x + self.dropout(ffn_x))
-        return x
+        ffn_x = self.third_sublayer(x)  # (B,T,d_model); internal FFN width is d_ff
+        x = self.third_layernorm(x + self.dropout(ffn_x))  # (B,T,d_model)
+        return x  # (B,T,d_model)
 
 
 class Decoder(nn.Module):
