@@ -7,7 +7,7 @@ class LayerNorm(nn.Module):
     """Normalize over d_model, using population variance and learned scale/shift."""
     def __init__(self, d_model: int, eps: float = 1e-5):
         super().__init__()
-        self.norm = nn.LayerNorm(d_model, eps=1e-5)
+        self.norm = nn.LayerNorm(d_model, eps=eps)
 
     def forward(self, x: Tensor) -> Tensor:
         # In forward; x: (B, L, d_model)
