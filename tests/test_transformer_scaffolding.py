@@ -224,6 +224,42 @@ class TransformerScaffoldingTests(unittest.TestCase):
         for a, b in zip(whole.parameters(), resumed.parameters()):
             torch.testing.assert_close(a, b, rtol=0, atol=0)
 
+    def test_early_stopping_resets_after_validation_improves(self):
+        p, folder = self.processed(), self.temporary_directory()
+        config = replace(TransformerConfig.smoke(), max_epochs=10, patience=2)
+        losses = [3., 4., 2., 2., 2.]
+        metrics = [{"mean_loss": loss, "perplexity": math.exp(loss)} for loss in losses]
+        with patch("transformer.training.loop.evaluate_perplexity", side_effect=metrics):
+            state = fit(DummyTransformer(len(p.vocab)), p, p, config, "cpu",
+                        output_dir=folder, verbose=False)
+        self.assertEqual(state["epoch"], 6)
+        self.assertEqual(state["next_batch"], 0)
+        self.assertEqual(state["updates"], 10)
+        self.assertEqual(state["bad_epochs"], 2)
+        self.assertEqual(state["best_loss"], 2.)
+        self.assertEqual([row["validation"] for row in state["history"]], metrics)
+        self.assertTrue(all(row["epoch_complete"] for row in state["history"]))
+        self.assertEqual(load_checkpoint(folder / "checkpoint_epoch_0005.pt")["state"], state)
+
+    def test_partial_checkpoint_preserves_last_ten_complete_epochs(self):
+        p, folder = self.processed(), self.temporary_directory()
+        config = replace(TransformerConfig.smoke(), max_epochs=20, max_updates=23)
+        metrics = [{"mean_loss": float(loss), "perplexity": math.exp(loss)}
+                   for loss in range(12, 0, -1)]
+        with patch("transformer.training.loop.evaluate_perplexity", side_effect=metrics):
+            state = fit(DummyTransformer(len(p.vocab)), p, p, config, "cpu",
+                        output_dir=folder, verbose=False)
+        self.assertEqual(sorted(path.name for path in folder.glob("checkpoint_epoch_*.pt")),
+                         [f"checkpoint_epoch_{epoch:04d}.pt" for epoch in range(2, 12)])
+        self.assertEqual(state["epoch"], 12)
+        self.assertEqual(state["next_batch"], 1)
+        self.assertEqual(state["updates"], 23)
+        self.assertEqual(state["best_loss"], 2.)
+        self.assertEqual(state["bad_epochs"], 0)
+        self.assertEqual(state["history"][-1], {"epoch": 12, "updates": 23,
+                                              "epoch_complete": False, "validation": metrics[-1]})
+        self.assertEqual(load_checkpoint(folder / "checkpoint_partial.pt")["state"], state)
+
     def test_checkpoint_average_and_insufficient_history(self):
         folder = self.temporary_directory()
         model = nn.Linear(1, 1, bias=False)
