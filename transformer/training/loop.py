@@ -34,68 +34,90 @@ def train_update(model, batches, optimizer, config, device):
             "tokens": total_tokens, "grad_norm": float(norm)}
 
 
+def _restore_training(resume, model, optimizer, config, vocab, metadata):
+    """Validate compatibility before restoring model, optimizer, and RNG state."""
+    saved = load_checkpoint(resume)
+    old_config = dict(saved["metadata"]["config"])
+    new_config = asdict(config)
+    for limit in ("max_updates", "max_epochs"):
+        old_config.pop(limit, None)
+        new_config.pop(limit, None)
+    if old_config != new_config or saved["metadata"]["vocab"] != vocab.to_dict():
+        raise ValueError("resume configuration/vocabulary mismatch")
+    for key in ("data_manifest", "code_sha256"):
+        if saved["metadata"].get(key) != metadata.get(key):
+            raise ValueError(f"resume {key} mismatch")
+    load_checkpoint(resume, model=model, optimizer=optimizer, restore_rng=True)
+    return saved["state"], {**saved["metadata"], "config": asdict(config)}
+
+
+def train_epoch(model, train, optimizer, config, device, state, *, verbose=True):
+    """Train from next_batch, updating progress; return whether the epoch finished."""
+    epoch = state["epoch"]
+    model.train()
+    loader = train.dataloader(config.max_tokens, shuffle=True, seed=config.seed,
+                              batch_size=config.batch_size, epoch=epoch)
+    total_batches = len(loader)
+    iterator = itertools.islice(iter(loader), state["next_batch"], None)
+    while group := list(itertools.islice(iterator, config.accumulation_steps)):
+        # The reference resets dropout RNG at each update; resume is reproducible.
+        torch.manual_seed(config.seed + state["updates"])
+        for parameters in optimizer.param_groups:
+            parameters["lr"] = learning_rate(state["updates"], config)
+        train_update(model, group, optimizer, config, device)
+        state["updates"] += 1
+        state["next_batch"] += len(group)
+        if verbose and state["updates"] % 100 == 0:
+            print(f"update={state['updates']} epoch={epoch} lr={optimizer.param_groups[0]['lr']:.7f}", flush=True)
+        if state["updates"] >= config.max_updates:
+            break
+    return state["next_batch"] >= total_batches
+
+
+def _record_validation(state, metrics, *, completed):
+    """Record every validation, advancing early stopping only for complete epochs."""
+    epoch = state["epoch"]
+    if completed:
+        state["bad_epochs"] = 0 if metrics["mean_loss"] < state["best_loss"] else state["bad_epochs"] + 1
+        state["best_loss"] = min(state["best_loss"], metrics["mean_loss"])
+        state["epoch"], state["next_batch"] = epoch + 1, 0
+    state["history"].append({"epoch": epoch, "updates": state["updates"],
+                             "epoch_complete": completed, "validation": metrics})
+
+
+def _save_epoch_checkpoint(output_dir, model, optimizer, state, metadata, *, epoch, completed):
+    """Keep a partial checkpoint separate from the last ten complete epochs."""
+    filename = f"checkpoint_epoch_{epoch:04d}.pt" if completed else "checkpoint_partial.pt"
+    save_checkpoint(output_dir / filename, model, optimizer, state, metadata)
+    if completed:
+        for old in sorted(output_dir.glob("checkpoint_epoch_*.pt"))[:-10]:
+            old.unlink()
+
+
 def fit(model, train, valid, config: TransformerConfig, device, *, output_dir,
         metadata=None, resume=None, verbose=True):
+    """Coordinate setup, resumable training, validation, and epoch checkpoints."""
     config.validate()
     model.to(device)
     optimizer = ReferenceAdam(model.parameters(), lr=learning_rate(0, config),
-                                 betas=config.adam_betas, eps=config.adam_eps)
+                              betas=config.adam_betas, eps=config.adam_eps)
     metadata = dict(metadata or {})
     metadata.setdefault("config", asdict(config))
     metadata.setdefault("vocab", train.vocab.to_dict())
     state = {"epoch": 1, "next_batch": 0, "updates": 0,
              "best_loss": float("inf"), "bad_epochs": 0, "history": []}
     if resume is not None:
-        saved = load_checkpoint(resume)
-        old_config = dict(saved["metadata"]["config"])
-        new_config = asdict(config)
-        for limits in ("max_updates", "max_epochs"):
-            old_config.pop(limits, None)
-            new_config.pop(limits, None)
-        if old_config != new_config or saved["metadata"]["vocab"] != train.vocab.to_dict():
-            raise ValueError("resume configuration/vocabulary mismatch")
-        for key in ("data_manifest", "code_sha256"):
-            if saved["metadata"].get(key) != metadata.get(key):
-                raise ValueError(f"resume {key} mismatch")
-        load_checkpoint(resume, model=model, optimizer=optimizer, restore_rng=True)
-        state = saved["state"]
-        metadata = {**saved["metadata"], "config": asdict(config)}
+        state, metadata = _restore_training(resume, model, optimizer, config, train.vocab, metadata)
     output_dir = Path(output_dir)
     while (state["epoch"] <= config.max_epochs and state["updates"] < config.max_updates
            and state["bad_epochs"] < config.patience):
         epoch = state["epoch"]
-        model.train()
-        loader = train.dataloader(config.max_tokens, shuffle=True, seed=config.seed,
-                                  batch_size=config.batch_size, epoch=epoch)
-        total_batches = len(loader)
-        iterator = itertools.islice(iter(loader), state["next_batch"], None)
-        while group := list(itertools.islice(iterator, config.accumulation_steps)):
-            # The reference resets dropout RNG at each update; resume is reproducible.
-            torch.manual_seed(config.seed + state['updates'])
-            for parameters in optimizer.param_groups:
-                parameters["lr"] = learning_rate(state["updates"], config)
-            train_update(model, group, optimizer, config, device)
-            state["updates"] += 1
-            state["next_batch"] += len(group)
-            if verbose and state['updates'] % 100 == 0:
-                print(f"update={state['updates']} epoch={epoch} lr={optimizer.param_groups[0]['lr']:.7f}", flush=True)
-            if state["updates"] >= config.max_updates:
-                break
+        completed = train_epoch(model, train, optimizer, config, device, state, verbose=verbose)
         metrics = evaluate_perplexity(model, valid, device, max_tokens=config.max_tokens,
                                       batch_size=config.batch_size, epsilon=config.label_smoothing)
-        completed = state["next_batch"] >= total_batches
-        if completed:
-            state["bad_epochs"] = 0 if metrics["mean_loss"] < state["best_loss"] else state["bad_epochs"] + 1
-            state["best_loss"] = min(state["best_loss"], metrics["mean_loss"])
-            state["epoch"], state["next_batch"] = epoch + 1, 0
-        state["history"].append({"epoch": epoch, "updates": state["updates"],
-                                 "epoch_complete": completed, "validation": metrics})
-        filename = f"checkpoint_epoch_{epoch:04d}.pt" if completed else "checkpoint_partial.pt"
-        save_checkpoint(output_dir / filename, model, optimizer, state, metadata)
-        if completed:
-            # Match retention of the last ten complete epoch checkpoints.
-            for old in sorted(output_dir.glob('checkpoint_epoch_*.pt'))[:-10]:
-                old.unlink()
+        _record_validation(state, metrics, completed=completed)
+        _save_epoch_checkpoint(output_dir, model, optimizer, state, metadata,
+                               epoch=epoch, completed=completed)
         if verbose:
             print(f"epoch={epoch} updates={state['updates']} valid_ppl={metrics['perplexity']:.4f} complete={completed}")
     return state
